@@ -25,6 +25,7 @@ import {
   generateNewAccessKey,
   fetchFamilyData,
   pushFamilyData,
+  subscribeToFamilyData,
   DEFAULT_FAMILY_ID,
   mergeEvents,
   mergeShifts,
@@ -247,49 +248,60 @@ export default function App() {
     };
   }, [familyId]);
 
-  // Periodic polling & focus sync for live multi-device updates (Laptop <-> Phone)
+  // Real-time Firestore live listener for instantaneous phone <-> laptop sync
   useEffect(() => {
     if (!familyId || !isOnline) return;
 
-    let isCancelled = false;
-
-    const performSync = async () => {
-      try {
-        const res = await fetchFamilyData(familyId);
-        if (isCancelled) return;
-
-        if (res.success && res.updatedAt && res.updatedAt > lastServerTimestamp) {
-          setEvents(res.events || []);
-          setShifts(res.shifts || []);
-          if (res.memberNames) {
-            setMemberNames(res.memberNames);
-            saveMemberNamesToStorage(res.memberNames);
+    // 1. Real-time Firebase Firestore listener
+    const unsubscribe = subscribeToFamilyData(
+      familyId,
+      (incoming) => {
+        if (incoming.success && incoming.updatedAt && incoming.updatedAt > lastServerTimestamp) {
+          setEvents(incoming.events || []);
+          setShifts(incoming.shifts || []);
+          if (incoming.memberNames && Object.keys(incoming.memberNames).length > 0) {
+            setMemberNames(incoming.memberNames);
+            saveMemberNamesToStorage(incoming.memberNames);
           }
-          setLastServerTimestamp(res.updatedAt);
+          setLastServerTimestamp(incoming.updatedAt);
           setSyncStatus('synced');
           setLastSyncTime(new Date());
         }
-      } catch (err) {
-        console.error('[Sync] Polling error:', err);
+      },
+      (err) => {
+        console.warn('[Sync] Firestore realtime listener warning:', err);
       }
-    };
+    );
 
-    const interval = setInterval(performSync, 3500);
-    const handleFocus = () => performSync();
-    const handleVisibilityChange = () => {
+    // 2. Immediate sync when user switches back to browser tab/phone screen
+    const handleFocusOrVisible = async () => {
       if (document.visibilityState === 'visible') {
-        performSync();
+        try {
+          const res = await fetchFamilyData(familyId);
+          if (res.success && res.updatedAt && res.updatedAt > lastServerTimestamp) {
+            setEvents(res.events || []);
+            setShifts(res.shifts || []);
+            if (res.memberNames) {
+              setMemberNames(res.memberNames);
+              saveMemberNamesToStorage(res.memberNames);
+            }
+            setLastServerTimestamp(res.updatedAt);
+            setSyncStatus('synced');
+            setLastSyncTime(new Date());
+          }
+        } catch (err) {
+          console.error('[Sync] Visibility sync error:', err);
+        }
       }
     };
 
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocusOrVisible);
+    document.addEventListener('visibilitychange', handleFocusOrVisible);
 
     return () => {
-      isCancelled = true;
-      clearInterval(interval);
-      window.removeEventListener('focus', handleFocus);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      unsubscribe();
+      window.removeEventListener('focus', handleFocusOrVisible);
+      document.removeEventListener('visibilitychange', handleFocusOrVisible);
     };
   }, [familyId, isOnline, lastServerTimestamp]);
 

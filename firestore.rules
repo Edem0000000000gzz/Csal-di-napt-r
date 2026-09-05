@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /families/{familyId} {
+      // Allow read and write for any family calendar identified by its familyId
+      allow read, write: if familyId.size() >= 3 && familyId.size() <= 64;
+    }
+  }
+}

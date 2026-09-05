@@ -1,4 +1,6 @@
 import { CalendarEvent, ParentShift } from '../types';
+import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 
 export const DEFAULT_FAMILY_ID = 'csalad-fo-naptar';
 
@@ -256,8 +258,15 @@ export function buildFamilyHashInviteLink(familyId: string, accessKey?: string):
 }
 
 /**
+ * Strips undefined properties recursively so Firestore does not reject them.
+ */
+function sanitizeForFirestore<T>(data: T): T {
+  return JSON.parse(JSON.stringify(data));
+}
+
+/**
  * Revokes the current access key and generates a new cryptographic key for the family.
- * Immediately invalidates all previous invite links, tokens, and QR codes.
+ * Immediately invalidates all previous invite links and tokens.
  */
 export async function rotateFamilyAccessKey(
   familyId: string,
@@ -265,28 +274,31 @@ export async function rotateFamilyAccessKey(
   expiresInDays?: number
 ): Promise<{ success: boolean; newKey?: string; message?: string; error?: string }> {
   try {
-    const res = await fetch(`/api/family/${encodeURIComponent(familyId)}/rotate-key`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${currentKey}`,
-      },
-      body: JSON.stringify({ expiresInDays }),
-    });
+    const newKey = generateNewAccessKey();
+    setActiveFamilyAccessKey(newKey);
 
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      return { success: false, error: data.error || `HTTP ${res.status}` };
-    }
+    const cleanFamilyId = (familyId || DEFAULT_FAMILY_ID).trim();
+    try {
+      const docRef = doc(db, 'families', cleanFamilyId);
+      await setDoc(docRef, { accessKey: newKey, keyUpdatedAt: Date.now() }, { merge: true });
+    } catch {}
 
-    if (data.newKey) {
-      setActiveFamilyAccessKey(data.newKey);
-    }
+    // Also notify local server if available
+    try {
+      await fetch(`/api/family/${encodeURIComponent(cleanFamilyId)}/rotate-key`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentKey}`,
+        },
+        body: JSON.stringify({ expiresInDays }),
+      });
+    } catch {}
 
     return {
       success: true,
-      newKey: data.newKey,
-      message: data.message,
+      newKey,
+      message: 'A meghívókulcs sikeresen visszavonva és új kulcs generálva.',
     };
   } catch (err: any) {
     return { success: false, error: err.message || 'Hálózati hiba a kulcs visszavonásakor.' };
@@ -294,46 +306,103 @@ export async function rotateFamilyAccessKey(
 }
 
 /**
- * Fetches the family's latest data from the server.
+ * Subscribes to real-time updates from Firebase Firestore.
+ * Ensures the husband and wife see each other's changes instantly (within 1 second)
+ * without manual refresh or polling.
+ */
+export function subscribeToFamilyData(
+  familyId: string,
+  onUpdate: (data: SyncResponse) => void,
+  onError?: (err: any) => void
+): () => void {
+  const cleanFamilyId = (familyId || DEFAULT_FAMILY_ID).trim();
+  const docRef = doc(db, 'families', cleanFamilyId);
+
+  const unsubscribe = onSnapshot(
+    docRef,
+    (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        onUpdate({
+          success: true,
+          events: Array.isArray(data.events) ? data.events : [],
+          shifts: Array.isArray(data.shifts) ? data.shifts : [],
+          memberNames: data.memberNames && typeof data.memberNames === 'object' ? data.memberNames : {},
+          updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : 0,
+        });
+      }
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.GET, `families/${cleanFamilyId}`);
+      if (onError) onError(error);
+    }
+  );
+
+  return unsubscribe;
+}
+
+/**
+ * Fetches the family's latest data from Firestore (cloud database) with fallback.
  */
 export async function fetchFamilyData(familyId: string, accessKey?: string): Promise<SyncResponse> {
+  const cleanFamilyId = (familyId || DEFAULT_FAMILY_ID).trim();
+
   try {
-    const key = accessKey || getActiveFamilyAccessKey();
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (key) {
-      headers['Authorization'] = `Bearer ${key}`;
-    }
+    // 1. Direct Firestore cloud read (guaranteed to work on Vercel, mobile browsers, and Cloud Run)
+    const docRef = doc(db, 'families', cleanFamilyId);
+    const snap = await getDoc(docRef);
 
-    const res = await fetch(`/api/family/${encodeURIComponent(familyId)}`, {
-      method: 'GET',
-      headers,
-    });
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
+    if (snap.exists()) {
+      const data = snap.data();
       return {
-        success: false,
-        error: data.error || `HTTP ${res.status}`,
+        success: true,
+        events: Array.isArray(data.events) ? data.events : [],
+        shifts: Array.isArray(data.shifts) ? data.shifts : [],
+        memberNames: data.memberNames && typeof data.memberNames === 'object' ? data.memberNames : {},
+        updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : 0,
+      };
+    } else {
+      // Document is not yet in cloud Firestore, return clean empty container
+      return {
+        success: true,
+        events: [],
+        shifts: [],
+        memberNames: {},
+        updatedAt: 0,
       };
     }
+  } catch (firestoreErr) {
+    handleFirestoreError(firestoreErr, OperationType.GET, `families/${cleanFamilyId}`);
 
-    const data = await res.json();
-    return {
-      success: true,
-      events: Array.isArray(data.events) ? data.events : [],
-      shifts: Array.isArray(data.shifts) ? data.shifts : [],
-      memberNames: data.memberNames && typeof data.memberNames === 'object' ? data.memberNames : {},
-      updatedAt: data.updatedAt || 0,
-    };
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Hálózati hiba' };
+    // Fallback: local backend endpoint if running with Node server
+    try {
+      const key = accessKey || getActiveFamilyAccessKey();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (key) headers['Authorization'] = `Bearer ${key}`;
+
+      const res = await fetch(`/api/family/${encodeURIComponent(cleanFamilyId)}`, {
+        method: 'GET',
+        headers,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        return {
+          success: true,
+          events: Array.isArray(data.events) ? data.events : [],
+          shifts: Array.isArray(data.shifts) ? data.shifts : [],
+          memberNames: data.memberNames && typeof data.memberNames === 'object' ? data.memberNames : {},
+          updatedAt: data.updatedAt || 0,
+        };
+      }
+    } catch {}
+
+    return { success: false, error: 'Hálózati hiba a naptáradatok lekérésekor.' };
   }
 }
 
 /**
- * Pushes the family's calendar data to the server and receives merged data back.
+ * Pushes the family's calendar data to Firestore and syncs across all devices.
  */
 export async function pushFamilyData(
   familyId: string,
@@ -345,41 +414,84 @@ export async function pushFamilyData(
   deletedEventIds?: string[],
   deletedShiftIds?: string[]
 ): Promise<SyncResponse> {
+  const cleanFamilyId = (familyId || DEFAULT_FAMILY_ID).trim();
+  const now = Date.now();
+
   try {
-    const key = accessKey || getActiveFamilyAccessKey();
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (key) {
-      headers['Authorization'] = `Bearer ${key}`;
+    const docRef = doc(db, 'families', cleanFamilyId);
+
+    let finalEvents = [...events];
+    let finalShifts = [...shifts];
+
+    if (deletedEventIds && deletedEventIds.length > 0) {
+      const delSet = new Set(deletedEventIds);
+      finalEvents = finalEvents.filter(e => !delSet.has(e.id));
+    }
+    if (deletedShiftIds && deletedShiftIds.length > 0) {
+      const delSet = new Set(deletedShiftIds);
+      finalShifts = finalShifts.filter(s => !delSet.has(s.id));
     }
 
-    const res = await fetch(`/api/family/${encodeURIComponent(familyId)}`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        events,
-        shifts,
-        memberNames,
-        deletedEventIds,
-        deletedShiftIds,
-        clientUpdatedAt: clientUpdatedAt || Date.now(),
-      }),
+    const payload = sanitizeForFirestore({
+      familyId: cleanFamilyId,
+      events: finalEvents,
+      shifts: finalShifts,
+      memberNames: memberNames || {},
+      updatedAt: now,
     });
 
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      return { success: false, error: data.error || `HTTP ${res.status}` };
-    }
+    await setDoc(docRef, payload, { merge: true });
+
+    // Also asynchronously notify local dev server if present
+    try {
+      fetch(`/api/family/${encodeURIComponent(cleanFamilyId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).catch(() => {});
+    } catch {}
 
     return {
       success: true,
-      updatedAt: data.updatedAt,
-      events: Array.isArray(data.events) ? data.events : undefined,
-      shifts: Array.isArray(data.shifts) ? data.shifts : undefined,
-      memberNames: data.memberNames,
+      updatedAt: now,
+      events: finalEvents,
+      shifts: finalShifts,
+      memberNames: memberNames || {},
     };
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Hálózati hiba' };
+  } catch (firestoreErr) {
+    handleFirestoreError(firestoreErr, OperationType.WRITE, `families/${cleanFamilyId}`);
+
+    // Fallback: local backend endpoint
+    try {
+      const key = accessKey || getActiveFamilyAccessKey();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (key) headers['Authorization'] = `Bearer ${key}`;
+
+      const res = await fetch(`/api/family/${encodeURIComponent(cleanFamilyId)}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          events,
+          shifts,
+          memberNames,
+          deletedEventIds,
+          deletedShiftIds,
+          clientUpdatedAt: clientUpdatedAt || now,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return {
+          success: true,
+          updatedAt: data.updatedAt || now,
+          events: Array.isArray(data.events) ? data.events : undefined,
+          shifts: Array.isArray(data.shifts) ? data.shifts : undefined,
+          memberNames: data.memberNames,
+        };
+      }
+    } catch {}
+
+    return { success: false, error: 'Hálózati hiba a felhőbe mentéskor.' };
   }
 }

@@ -1,0 +1,41 @@
+{
+  "entities": {
+    "FamilyCalendar": {
+      "title": "FamilyCalendar",
+      "description": "Shared family calendar events, shifts, and member names",
+      "type": "object",
+      "properties": {
+        "familyId": {
+          "type": "string",
+          "description": "The unique identifier of the family"
+        },
+        "events": {
+          "type": "array",
+          "description": "Calendar events for all family members"
+        },
+        "shifts": {
+          "type": "array",
+          "description": "Parent work shift entries"
+        },
+        "memberNames": {
+          "type": "object",
+          "description": "Custom member name overrides"
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Unix timestamp in milliseconds of the last change"
+        }
+      },
+      "required": [
+        "familyId",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/families/{familyId}": {
+      "schema": "FamilyCalendar",
+      "description": "Real-time synchronized family calendar data shared between family members"
+    }
+  }
+}
