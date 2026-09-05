@@ -19,7 +19,7 @@ interface FamilyMatrixTableProps {
   onJumpToToday: () => void;
   events: CalendarEvent[];
   shifts: ParentShift[];
-  onOpenEventModal: (date: string, event?: CalendarEvent) => void;
+  onOpenEventModal: (date: string, event?: CalendarEvent, memberId?: FamilyMemberId) => void;
   onOpenShiftModal: (date: string, parent?: 'apa' | 'anya') => void;
   memberNames?: Record<string, string>;
 }
@@ -263,6 +263,17 @@ export const FamilyMatrixTable: React.FC<FamilyMatrixTableProps> = ({
                                 </div>
                               );
                             })}
+
+                            {/* Quick Add Event for this family member on this day */}
+                            <button
+                              type="button"
+                              onClick={() => onOpenEventModal(day.iso, undefined, member.id)}
+                              className="w-full mt-1 py-1 px-1.5 rounded-lg border border-dashed border-slate-750 hover:border-indigo-500/80 hover:bg-slate-800/80 text-slate-400 hover:text-indigo-300 text-[10px] font-medium flex items-center justify-center gap-1 transition cursor-pointer"
+                              title={`${getMemberName(member.id, memberNames, true)} eseményének hozzáadása`}
+                            >
+                              <Plus className="w-2.5 h-2.5 text-indigo-400" />
+                              <span>+ Új teendő</span>
+                            </button>
                           </div>
                         </td>
                       );

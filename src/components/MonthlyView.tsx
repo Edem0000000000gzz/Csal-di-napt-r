@@ -34,7 +34,7 @@ interface MonthlyViewProps {
   selectedMember?: FamilyMemberId;
   memberNames?: Record<string, string>;
   onUpdateMemberName?: (memberId: FamilyMemberId | string, newName: string) => void;
-  onOpenEventModal: (date: string, event?: CalendarEvent) => void;
+  onOpenEventModal: (date: string, event?: CalendarEvent, memberId?: FamilyMemberId) => void;
   onOpenShiftModal: (date: string, parent?: 'apa' | 'anya') => void;
   onDeleteEvent?: (eventId: string) => void;
   onToggleEventCompleted?: (eventId: string) => void;
@@ -234,12 +234,27 @@ export const MonthlyView: React.FC<MonthlyViewProps> = ({
                       {cell.dayNumber}
                     </span>
 
-                    {/* If there are items on this day, show a small counter or pulse dot */}
-                    {hasAnything && (
-                      <span className="text-[9px] font-bold text-slate-400 px-1 py-0.2 rounded bg-slate-800 border border-slate-700/60 hidden sm:inline">
-                        {dayEvents.length > 0 ? `${dayEvents.length} esemény` : 'Munkanap'}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {/* Quick + button directly on cell hover */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenEventModal(cell.iso);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded-md bg-slate-800 hover:bg-indigo-600 text-slate-400 hover:text-white transition cursor-pointer shadow-2xs"
+                        title="Új esemény hozzáadása erre a napra"
+                      >
+                        <Plus className="w-3 h-3" />
+                      </button>
+
+                      {/* If there are items on this day, show a small counter or pulse dot */}
+                      {hasAnything && (
+                        <span className="text-[9px] font-bold text-slate-400 px-1 py-0.2 rounded bg-slate-800 border border-slate-700/60 hidden sm:inline">
+                          {dayEvents.length > 0 ? `${dayEvents.length} esemény` : 'Munkanap'}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Parental Shifts Mini Badges */}
@@ -413,6 +428,49 @@ export const MonthlyView: React.FC<MonthlyViewProps> = ({
                       <span>Módosítás</span>
                     </button>
                   </div>
+                </div>
+              </div>
+
+              {/* Quick Member Shortcuts for adding multiple events for any of the 5 family members */}
+              <div className="p-3 bg-slate-800/80 rounded-2xl border border-slate-750 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                    <Plus className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Új esemény hozzáadása családtaghoz (mind az 5 tagnak külön):</span>
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                  {FAMILY_MEMBERS.map((m) => {
+                    const name = getMemberName(m.id, memberNames, true);
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => {
+                          const date = dayDetailsModalIso;
+                          setDayDetailsModalIso(null);
+                          onOpenEventModal(date, undefined, m.id);
+                        }}
+                        className="py-1.5 px-2 rounded-xl text-xs font-bold text-white transition flex items-center justify-center gap-1 shadow-xs cursor-pointer hover:opacity-90 active:scale-95"
+                        style={{ backgroundColor: m.color }}
+                        title={`${name} eseményének beírása`}
+                      >
+                        <span>+ {name}</span>
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const date = dayDetailsModalIso;
+                      setDayDetailsModalIso(null);
+                      onOpenEventModal(date, undefined, 'all');
+                    }}
+                    className="py-1.5 px-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 transition flex items-center justify-center gap-1 shadow-xs cursor-pointer active:scale-95"
+                    title="Családi közös program"
+                  >
+                    <span>+ Mindenki</span>
+                  </button>
                 </div>
               </div>
 

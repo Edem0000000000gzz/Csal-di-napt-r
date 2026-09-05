@@ -25,14 +25,18 @@ import {
   CheckSquare,
   Briefcase,
   Sparkles,
+  CheckCircle2,
+  Plus,
 } from 'lucide-react';
 
 interface EventModalProps {
   isOpen: boolean;
   onClose: () => void;
   selectedDate?: string;
+  initialMemberId?: FamilyMemberId;
   editEvent?: CalendarEvent | null;
   onSaveEvent: (event: CalendarEvent) => void;
+  onSaveBatchEvents?: (events: CalendarEvent[]) => void;
   onDeleteEvent?: (id: string) => void;
   memberNames?: Record<string, string>;
   onSaveShift?: (shift: ParentShift) => void;
@@ -43,8 +47,10 @@ export const EventModal: React.FC<EventModalProps> = ({
   isOpen,
   onClose,
   selectedDate,
+  initialMemberId,
   editEvent,
   onSaveEvent,
+  onSaveBatchEvents,
   onDeleteEvent,
   memberNames,
   onSaveShift,
@@ -53,6 +59,7 @@ export const EventModal: React.FC<EventModalProps> = ({
   const [entryType, setEntryType] = useState<'event' | 'workday'>('event');
   const [title, setTitle] = useState('');
   const [memberId, setMemberId] = useState<FamilyMemberId>('all');
+  const [memberMode, setMemberMode] = useState<'single' | 'all5'>('single');
   const [category, setCategory] = useState<EventCategory>('family');
   const [date, setDate] = useState(selectedDate || formatIsoDate(new Date()));
   const [isAllDay, setIsAllDay] = useState(false);
@@ -63,16 +70,21 @@ export const EventModal: React.FC<EventModalProps> = ({
   const [reminder, setReminder] = useState<ReminderTime>('none');
   const [customReminderDateTime, setCustomReminderDateTime] = useState('');
   const [syncToParentShift, setSyncToParentShift] = useState(true);
+  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
 
   const apaName = getMemberName('apa', memberNames, true);
   const anyaName = getMemberName('anya', memberNames, true);
 
+  const titleInputRef = React.useRef<HTMLInputElement | null>(null);
+
   React.useEffect(() => {
+    setFeedbackMsg(null);
     if (editEvent) {
       const isWork = editEvent.category === 'work';
       setEntryType(isWork ? 'workday' : 'event');
       setTitle(editEvent.title);
       setMemberId(editEvent.memberId);
+      setMemberMode('single');
       setCategory(editEvent.category);
       setDate(editEvent.date);
       setIsAllDay(!!editEvent.isAllDay);
@@ -86,7 +98,8 @@ export const EventModal: React.FC<EventModalProps> = ({
     } else {
       setEntryType('event');
       setTitle('');
-      setMemberId('all');
+      setMemberId(initialMemberId || 'all');
+      setMemberMode('single');
       setCategory('family');
       setDate(selectedDate || formatIsoDate(new Date()));
       setIsAllDay(false);
@@ -98,7 +111,7 @@ export const EventModal: React.FC<EventModalProps> = ({
       setCustomReminderDateTime('');
       setSyncToParentShift(true);
     }
-  }, [editEvent, selectedDate, isOpen]);
+  }, [editEvent, selectedDate, initialMemberId, isOpen]);
 
   if (!isOpen) return null;
 
@@ -126,12 +139,55 @@ export const EventModal: React.FC<EventModalProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveInternal = (keepOpenForNext: boolean) => {
     const finalTitle = title.trim() || (entryType === 'workday' ? (isAllDay ? 'Pihenőnap' : 'Munkanap') : 'Esemény');
 
+    // Case 1: Apply to ALL 5 family members at once
+    if (memberMode === 'all5' && !editEvent && entryType !== 'workday') {
+      const fiveMembers: FamilyMemberId[] = ['apa', 'anya', 'amira', 'donat', 'hella'];
+      const baseTime = Date.now();
+      const eventsToSave: CalendarEvent[] = fiveMembers.map((mId, index) => ({
+        id: `ev-${baseTime}-${index}-${mId}`,
+        title: finalTitle,
+        memberId: mId,
+        category,
+        date,
+        startTime: isAllDay ? undefined : startTime,
+        endTime: isAllDay ? undefined : endTime,
+        isAllDay,
+        location: location.trim() || undefined,
+        notes: notes.trim() || undefined,
+        reminder,
+        customReminderDateTime: reminder === 'custom' ? customReminderDateTime : undefined,
+        createdAt: baseTime,
+        updatedAt: baseTime,
+        isCompleted: false,
+      }));
+
+      if (onSaveBatchEvents) {
+        onSaveBatchEvents(eventsToSave);
+      } else {
+        eventsToSave.forEach((ev) => onSaveEvent(ev));
+      }
+
+      if (keepOpenForNext) {
+        setTitle('');
+        setNotes('');
+        setLocation('');
+        setMemberMode('single');
+        setMemberId('apa');
+        setFeedbackMsg('✅ Mind az 5 családtaghoz sikeresen rögzítve! Írhatod a következő programot:');
+        setTimeout(() => titleInputRef.current?.focus(), 50);
+        return;
+      } else {
+        onClose();
+        return;
+      }
+    }
+
+    // Case 2: Standard single member or shared event
     const eventData: CalendarEvent = {
-      id: editEvent ? editEvent.id : `ev-${Date.now()}`,
+      id: editEvent ? editEvent.id : `ev-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       title: finalTitle,
       memberId,
       category: entryType === 'workday' ? 'work' : category,
@@ -170,7 +226,28 @@ export const EventModal: React.FC<EventModalProps> = ({
       onSaveShift(shiftData);
     }
 
-    onClose();
+    if (keepOpenForNext) {
+      // Cycle to the next family member automatically so user can quickly add for all 5
+      const memberOrder: FamilyMemberId[] = ['apa', 'anya', 'amira', 'donat', 'hella', 'all'];
+      const currentIndex = memberOrder.indexOf(memberId);
+      const nextMember = memberOrder[(currentIndex + 1) % memberOrder.length];
+      const savedPersonName = getMemberName(memberId, memberNames, true);
+      const nextPersonName = getMemberName(nextMember, memberNames, true);
+
+      setTitle('');
+      setNotes('');
+      setLocation('');
+      setMemberId(nextMember);
+      setFeedbackMsg(`✅ Mentve (${savedPersonName}: ${finalTitle})! Következő kiválasztva: ${nextPersonName}`);
+      setTimeout(() => titleInputRef.current?.focus(), 50);
+    } else {
+      onClose();
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleSaveInternal(false);
   };
 
   return (
@@ -201,6 +278,13 @@ export const EventModal: React.FC<EventModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
+          {feedbackMsg && (
+            <div className="p-3 rounded-2xl bg-emerald-950/90 border border-emerald-600 text-emerald-200 text-xs font-semibold flex items-center gap-2 animate-in fade-in shadow-lg">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{feedbackMsg}</span>
+            </div>
+          )}
+
           {/* Entry Type Switcher */}
           <div className="grid grid-cols-2 gap-2 p-1 bg-slate-800 rounded-2xl border border-slate-700/80">
             <button
@@ -226,6 +310,7 @@ export const EventModal: React.FC<EventModalProps> = ({
               onClick={() => {
                 setEntryType('workday');
                 setCategory('work');
+                setMemberMode('single');
                 if (memberId === 'all') setMemberId('apa');
                 if (!title.trim() || title === 'Esemény' || title === 'Új esemény') {
                   setTitle('Munkanap');
@@ -255,6 +340,7 @@ export const EventModal: React.FC<EventModalProps> = ({
               )}
             </label>
             <input
+              ref={titleInputRef}
               type="text"
               required
               value={title}
@@ -283,12 +369,40 @@ export const EventModal: React.FC<EventModalProps> = ({
 
           {/* Family Member Picker */}
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-              <Users className="w-3.5 h-3.5 text-slate-400" />
-              {entryType === 'workday' ? 'Ki dolgozik ezen a napon?' : 'Kihez tartozik a bejegyzés? (Színkódolt családtag)'}
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-slate-400" />
+                {entryType === 'workday' ? 'Ki dolgozik ezen a napon?' : 'Kihez tartozik a bejegyzés? (Színkódolt családtag)'}
+              </span>
+              {memberMode === 'all5' && (
+                <span className="text-[11px] text-emerald-400 font-bold">5 családtag kiválasztva</span>
+              )}
             </label>
+
+            {/* Quick All-5 Members Batch Option */}
+            {entryType !== 'workday' && !editEvent && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMemberMode((prev) => (prev === 'all5' ? 'single' : 'all5'));
+                }}
+                className={`w-full mb-2.5 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 border cursor-pointer ${
+                  memberMode === 'all5'
+                    ? 'bg-indigo-600 text-white border-indigo-400 shadow-md ring-2 ring-indigo-400/40'
+                    : 'bg-slate-800 hover:bg-slate-750 text-indigo-300 border-indigo-900/60'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>
+                  {memberMode === 'all5'
+                    ? '✓ Mind az 5 családtaghoz külön bejegyzés kerül mentésre'
+                    : '⚡ Mind az 5 családtagnak szeretnék bejegyzést tenni egyszerre'}
+                </span>
+              </button>
+            )}
+
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-              {entryType !== 'workday' && (
+              {entryType !== 'workday' && memberMode === 'single' && (
                 <button
                   type="button"
                   onClick={() => setMemberId('all')}
@@ -306,7 +420,7 @@ export const EventModal: React.FC<EventModalProps> = ({
               )}
 
               {FAMILY_MEMBERS.map((m) => {
-                const isSelected = memberId === m.id;
+                const isSelected = memberMode === 'all5' || memberId === m.id;
                 const memberName = getMemberName(m.id, memberNames, true);
                 const initial = getMemberInitial(m.id, memberNames);
                 return (
@@ -314,6 +428,7 @@ export const EventModal: React.FC<EventModalProps> = ({
                     key={m.id}
                     type="button"
                     onClick={() => {
+                      setMemberMode('single');
                       setMemberId(m.id);
                       if (entryType === 'workday') {
                         if (m.id === 'anya') {
@@ -572,7 +687,7 @@ export const EventModal: React.FC<EventModalProps> = ({
           </div>
 
           {/* Actions */}
-          <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-3">
+          <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2.5">
             {editEvent && onDeleteEvent ? (
               <button
                 type="button"
@@ -588,20 +703,36 @@ export const EventModal: React.FC<EventModalProps> = ({
               </button>
             ) : <div />}
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 ml-auto">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 rounded-xl text-slate-300 hover:bg-slate-800 text-sm font-semibold transition cursor-pointer"
+                className="px-3.5 py-2 rounded-xl text-slate-300 hover:bg-slate-800 text-xs sm:text-sm font-semibold transition cursor-pointer"
               >
                 Mégse
               </button>
+
+              {!editEvent && (
+                <button
+                  type="button"
+                  id="event-save-and-add-more-btn"
+                  onClick={() => handleSaveInternal(true)}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-indigo-300 hover:text-indigo-100 border border-indigo-700/80 text-xs sm:text-sm font-semibold transition cursor-pointer shadow-xs active:scale-95"
+                  title="Elmenti ezt és nyitva hagyja az ablakot a következő családtag programjának beírásához"
+                >
+                  <Plus className="w-4 h-4 text-indigo-400" />
+                  <span className="hidden sm:inline">Mentés és újabb erre a napra</span>
+                  <span className="sm:hidden">+ Újabb</span>
+                </button>
+              )}
+
               <button
                 type="submit"
-                className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold shadow-lg shadow-indigo-600/30 transition cursor-pointer"
+                id="event-save-and-close-btn"
+                className="flex items-center gap-1.5 px-4 sm:px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold shadow-lg shadow-indigo-600/30 transition cursor-pointer active:scale-95"
               >
                 <Check className="w-4 h-4" />
-                Mentés
+                <span>{editEvent ? 'Mentés' : 'Mentés és bezárás'}</span>
               </button>
             </div>
           </div>

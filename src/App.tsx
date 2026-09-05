@@ -120,6 +120,7 @@ export default function App() {
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [selectedEventDate, setSelectedEventDate] = useState<string>(getTodayIso());
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
+  const [initialEventMemberId, setInitialEventMemberId] = useState<FamilyMemberId | undefined>(undefined);
 
   const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
   const [selectedShiftDate, setSelectedShiftDate] = useState<string>(getTodayIso());
@@ -507,15 +508,17 @@ export default function App() {
   }, [events]);
 
   // Handlers for Events
-  const handleOpenNewEventModal = (date?: string) => {
+  const handleOpenNewEventModal = (date?: string, memberId?: FamilyMemberId) => {
     setSelectedEventDate(date || getTodayIso());
     setEditingEvent(null);
+    setInitialEventMemberId(memberId);
     setIsEventModalOpen(true);
   };
 
-  const handleOpenEditEventModal = (date: string, event?: CalendarEvent) => {
+  const handleOpenEditEventModal = (date: string, event?: CalendarEvent, memberId?: FamilyMemberId) => {
     setSelectedEventDate(date);
     setEditingEvent(event || null);
+    setInitialEventMemberId(memberId || (event ? event.memberId : undefined));
     setIsEventModalOpen(true);
   };
 
@@ -526,6 +529,15 @@ export default function App() {
         return prev.map((e) => (e.id === savedEvent.id ? savedEvent : e));
       }
       return [savedEvent, ...prev];
+    });
+  };
+
+  const handleSaveBatchEvents = (savedEvents: CalendarEvent[]) => {
+    if (!savedEvents || savedEvents.length === 0) return;
+    setEvents((prev) => {
+      const ids = new Set(savedEvents.map((e) => e.id));
+      const rest = prev.filter((e) => !ids.has(e.id));
+      return [...savedEvents, ...rest];
     });
   };
 
@@ -798,11 +810,16 @@ export default function App() {
       {/* Modals */}
       <EventModal
         isOpen={isEventModalOpen}
-        onClose={() => setIsEventModalOpen(false)}
+        onClose={() => {
+          setIsEventModalOpen(false);
+          setInitialEventMemberId(undefined);
+        }}
         selectedDate={selectedEventDate}
+        initialMemberId={initialEventMemberId}
         editEvent={editingEvent}
         memberNames={memberNames}
         onSaveEvent={handleSaveEvent}
+        onSaveBatchEvents={handleSaveBatchEvents}
         onDeleteEvent={handleDeleteEvent}
         onSaveShift={handleSaveShift}
         onOpenShiftModal={(date, parent) => {
