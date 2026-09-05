@@ -44,7 +44,7 @@ export const EventModal: React.FC<EventModalProps> = ({
   const [endTime, setEndTime] = useState('17:00');
   const [location, setLocation] = useState('');
   const [notes, setNotes] = useState('');
-  const [reminder, setReminder] = useState<ReminderTime>('30_min');
+  const [reminder, setReminder] = useState<ReminderTime>('none');
   const [customReminderDateTime, setCustomReminderDateTime] = useState('');
 
   React.useEffect(() => {
@@ -70,7 +70,7 @@ export const EventModal: React.FC<EventModalProps> = ({
       setEndTime('17:00');
       setLocation('');
       setNotes('');
-      setReminder('30_min');
+      setReminder('none');
       setCustomReminderDateTime('');
     }
   }, [editEvent, selectedDate, isOpen]);

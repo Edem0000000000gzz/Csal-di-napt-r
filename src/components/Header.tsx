@@ -55,15 +55,25 @@ export const Header: React.FC<HeaderProps> = ({
               <CalendarDays className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-base sm:text-lg font-extrabold text-white leading-tight tracking-tight">
                   Családi Naptár
                 </h1>
+                {familyId && (
+                  <button
+                    onClick={onOpenInviteModal}
+                    title="Kattints a családi kód és meghívó megnyitásához"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono bg-indigo-950/90 hover:bg-indigo-900 text-indigo-300 border border-indigo-750 transition cursor-pointer shadow-xs"
+                  >
+                    <Users className="w-3 h-3 text-indigo-400" />
+                    <span>Szoba: <strong className="text-white font-bold">{familyId}</strong></span>
+                  </button>
+                )}
                 <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-800">
                   {isOnline ? (
                     <>
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                      Élő kapcsolat
+                      Élő szinkron
                     </>
                   ) : (
                     <>

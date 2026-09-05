@@ -30,6 +30,7 @@ interface InviteFamilyModalProps {
   familyId: string | null;
   onGenerateNewFamily: () => void;
   onLeaveFamily: () => void;
+  onJoinFamily?: (customFamilyId: string) => void;
   eventsCount: number;
   shiftsCount: number;
 }
@@ -40,10 +41,12 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
   familyId,
   onGenerateNewFamily,
   onLeaveFamily,
+  onJoinFamily,
   eventsCount,
   shiftsCount,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
   const [qrImageUrl, setQrImageUrl] = useState<string>('');
   const [activeKey, setActiveKey] = useState<string>(() => getActiveFamilyAccessKey());
@@ -52,18 +55,51 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
   const [rotateError, setRotateError] = useState<string | null>(null);
   const [expiryOption, setExpiryOption] = useState<number>(0); // 0 = never, 7 = 7 days, 30 = 30 days
   const [showSecurityDetails, setShowSecurityDetails] = useState(false);
+  const [joinCodeInput, setJoinCodeInput] = useState('');
+  const [joinError, setJoinError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setActiveKey(getActiveFamilyAccessKey());
       setRotateMessage(null);
       setRotateError(null);
+      setJoinError(null);
+      setJoinCodeInput('');
     }
   }, [isOpen, familyId]);
 
   if (!isOpen) return null;
 
-  const inviteLink = familyId ? buildFamilyInviteLink(familyId, activeKey) : '';
+  const inviteLink = familyId ? buildFamilyInviteLink(familyId) : '';
+
+  const handleCopyCode = async () => {
+    if (!familyId) return;
+    try {
+      await navigator.clipboard.writeText(familyId);
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2500);
+    } catch {
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2500);
+    }
+  };
+
+  const handleJoinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = joinCodeInput.trim();
+    if (!clean) {
+      setJoinError('Kérlek adj meg egy családi kódot.');
+      return;
+    }
+    if (clean.length < 3) {
+      setJoinError('A családi kód legalább 3 karakterből áll.');
+      return;
+    }
+    if (onJoinFamily) {
+      onJoinFamily(clean);
+      onClose();
+    }
+  };
 
   useEffect(() => {
     if (!inviteLink) {
@@ -228,14 +264,21 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
             </div>
           ) : (
             <div className="space-y-3">
-              {/* Active Room Badge */}
-              <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-850 border border-slate-800 text-xs">
-                <div className="flex items-center gap-2">
+              {/* Active Room Badge & Quick Code Copy */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-2xl bg-slate-850 border border-slate-800 text-xs gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="font-semibold text-slate-300">Aktív privát azonosító:</span>
-                  <code className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-indigo-300 font-mono text-[11px]">
+                  <span className="font-semibold text-slate-300">Családi Kódod:</span>
+                  <code className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-indigo-300 font-mono text-xs font-bold">
                     {familyId}
                   </code>
+                  <button
+                    type="button"
+                    onClick={handleCopyCode}
+                    className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[11px] font-medium transition cursor-pointer"
+                  >
+                    {codeCopied ? 'Kód másolva!' : 'Kód másolása'}
+                  </button>
                 </div>
                 <div className="text-[11px] text-slate-400 font-medium">
                   {eventsCount} esemény • {shiftsCount} munkaidő
@@ -246,7 +289,7 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
                   <Link2 className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>A te privát családi meghívó linked:</span>
+                  <span>Közvetlen megosztási link (egy kattintással csatlakozik a családtagod):</span>
                 </label>
                 <div className="flex items-center gap-2 p-1.5 bg-slate-950 rounded-2xl border border-slate-800 focus-within:border-indigo-500 transition">
                   <input
@@ -272,7 +315,7 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
                     ) : (
                       <>
                         <Copy className="w-3.5 h-3.5" />
-                        <span>Másolás</span>
+                        <span>Link másolása</span>
                       </>
                     )}
                   </button>
@@ -287,7 +330,7 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
                   className="flex items-center justify-center gap-2 p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition cursor-pointer"
                 >
                   <Share2 className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Megosztás (Telefon)</span>
+                  <span>Küldés (WhatsApp / SMS)</span>
                 </button>
 
                 <button
@@ -300,7 +343,7 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
                   }`}
                 >
                   <QrCode className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>{showQr ? 'QR kód elrejtése' : 'QR kód mutatása'}</span>
+                  <span>{showQr ? 'QR kód elrejtése' : 'QR kód leolvasása'}</span>
                 </button>
               </div>
 
@@ -315,9 +358,45 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
                       loading="lazy"
                     />
                   </div>
-                  <p className="text-[11px] text-slate-400">
-                    A családtagod a telefonja kamerájával beolvasva azonnal megnyithatja a közös naptárat!
+                  <p className="text-[11px] text-slate-300 font-medium">
+                    A párod egyszerűen nyissa meg a telefonján a normál kamerát, olvassa be ezt a képernyőről, és azonnal közös naptárban lesztek!
                   </p>
+                </div>
+              )}
+
+              {/* Connect to another family code */}
+              {onJoinFamily && (
+                <div className="p-3.5 rounded-2xl bg-slate-950/90 border border-slate-800 space-y-2.5">
+                  <div className="flex items-center gap-2">
+                    <Users className="w-4 h-4 text-indigo-400" />
+                    <span className="text-xs font-bold text-slate-200">
+                      Csatlakozás a családhoz kód beírásával
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Ha a párod külön nyitotta meg az alkalmazást, egyszerűen másold be a másik telefonon látható Családi Kódot:
+                  </p>
+                  <form onSubmit={handleJoinSubmit} className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="Pl. csalad-9w2x vagy kovacs-csalad"
+                      value={joinCodeInput}
+                      onChange={(e) => {
+                        setJoinCodeInput(e.target.value);
+                        setJoinError(null);
+                      }}
+                      className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono"
+                    />
+                    <button
+                      type="submit"
+                      className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition cursor-pointer shrink-0 shadow-md shadow-indigo-600/20"
+                    >
+                      Csatlakozás
+                    </button>
+                  </form>
+                  {joinError && (
+                    <p className="text-[11px] text-rose-400 font-medium">{joinError}</p>
+                  )}
                 </div>
               )}
 

@@ -292,6 +292,10 @@ export default function App() {
     };
   }, [familyId, isOnline, lastServerTimestamp]);
 
+  // Deleted items tracking for reliable multi-device deletions
+  const deletedEventIdsRef = useRef<Set<string>>(new Set());
+  const deletedShiftIdsRef = useRef<Set<string>>(new Set());
+
   // Debounced push to server when events or shifts change
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialMount = useRef(true);
@@ -306,14 +310,30 @@ export default function App() {
     setSyncStatus('syncing');
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     syncTimeoutRef.current = setTimeout(async () => {
-      const res = await pushFamilyData(familyId, events, shifts, lastServerTimestamp, memberNames);
-      if (res.success && res.updatedAt) {
-        setLastServerTimestamp(res.updatedAt);
+      const deletedEvts: string[] = Array.from(deletedEventIdsRef.current);
+      const deletedShfts: string[] = Array.from(deletedShiftIdsRef.current);
+
+      const res = await pushFamilyData(
+        familyId,
+        events,
+        shifts,
+        lastServerTimestamp,
+        memberNames,
+        undefined,
+        deletedEvts,
+        deletedShfts
+      );
+      if (res.success) {
+        deletedEventIdsRef.current.clear();
+        deletedShiftIdsRef.current.clear();
+        if (res.updatedAt) setLastServerTimestamp(res.updatedAt);
         setSyncStatus('synced');
         setLastSyncTime(new Date());
-        if (res.merged && res.events) {
+        if (res.events) {
           setEvents(res.events);
-          if (res.shifts) setShifts(res.shifts);
+        }
+        if (res.shifts) {
+          setShifts(res.shifts);
         }
       } else {
         setSyncStatus('error');
@@ -345,6 +365,35 @@ export default function App() {
         setLastServerTimestamp(res.updatedAt || Date.now());
         setSyncStatus('synced');
         setLastSyncTime(new Date());
+      } else {
+        setSyncStatus('error');
+      }
+    } catch {
+      setSyncStatus('error');
+    }
+  };
+
+  // Handler: Join or switch to an existing family ID (e.g. wife entering husband's family code)
+  const handleJoinFamily = async (newFamilyId: string) => {
+    const trimmed = newFamilyId.trim();
+    if (!trimmed) return;
+    setFamilyId(trimmed);
+    setActiveFamilyId(trimmed);
+    setSyncStatus('syncing');
+    try {
+      const res = await fetchFamilyData(trimmed);
+      if (res.success) {
+        if (res.events) setEvents(res.events);
+        if (res.shifts) setShifts(res.shifts);
+        if (res.memberNames) {
+          setMemberNames(res.memberNames);
+          saveMemberNamesToStorage(res.memberNames);
+        }
+        setLastServerTimestamp(res.updatedAt || Date.now());
+        setSyncStatus('synced');
+        setLastSyncTime(new Date());
+        setJoinNotification(`Sikeresen összekapcsolva a "${trimmed}" családi naptárral!`);
+        setTimeout(() => setJoinNotification(null), 7000);
       } else {
         setSyncStatus('error');
       }
@@ -451,6 +500,7 @@ export default function App() {
   };
 
   const handleDeleteEvent = (eventId: string) => {
+    deletedEventIdsRef.current.add(eventId);
     setEvents((prev) => prev.filter((e) => e.id !== eventId));
   };
 
@@ -476,6 +526,7 @@ export default function App() {
   };
 
   const handleDeleteShift = (shiftId: string) => {
+    deletedShiftIdsRef.current.add(shiftId);
     setShifts((prev) => prev.filter((s) => s.id !== shiftId));
   };
 
@@ -748,6 +799,7 @@ export default function App() {
         familyId={familyId}
         onGenerateNewFamily={handleGenerateNewFamily}
         onLeaveFamily={handleLeaveFamily}
+        onJoinFamily={handleJoinFamily}
         eventsCount={events.length}
         shiftsCount={shifts.length}
       />

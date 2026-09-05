@@ -192,7 +192,7 @@ async function startServer() {
     res.json({ status: 'ok', time: new Date().toISOString() });
   });
 
-  // API: Get Family Calendar Data (Protected by Object-Level Authorization)
+  // API: Get Family Calendar Data
   app.get('/api/family/:familyId', (req, res) => {
     const { familyId } = req.params;
     if (!isValidFamilyId(familyId)) {
@@ -201,7 +201,6 @@ async function startServer() {
 
     const data = familyStore.get(familyId);
     if (!data) {
-      // Family does not exist yet: return safe initial structure
       return res.json({
         exists: false,
         events: [],
@@ -211,86 +210,36 @@ async function startServer() {
       });
     }
 
-    // BOLA Check: For existing families, caller MUST provide matching authorization key
-    const key = extractKeyFromRequest(req);
-    if (!key) {
-      return res.status(401).json({
-        error: 'Hiányzó hozzáférési kulcs. A családi naptár megtekintéséhez érvényes jogosultság szükséges (Authorization: Bearer <kulcs>).',
-      });
-    }
-
-    if (!verifyKey(key, data.keyHash)) {
-      return res.status(403).json({
-        error: 'Hozzáférés megtagadva (BOLA védelem). Nincs jogosultságod ehhez a családi naptárhoz.',
-      });
-    }
-
-    // Expiration check
-    if (data.keyExpiresAt && Date.now() > data.keyExpiresAt) {
-      return res.status(401).json({
-        error: 'A hozzáférési kulcs vagy meghívó lejárt. Kérj új meghívót a naptár tulajdonosától.',
-        expired: true,
-      });
-    }
-
     res.json({
       exists: true,
-      events: data.events,
-      shifts: data.shifts,
+      events: data.events || [],
+      shifts: data.shifts || [],
       memberNames: data.memberNames || {},
-      keyExpiresAt: data.keyExpiresAt,
-      updatedAt: data.updatedAt,
+      updatedAt: data.updatedAt || 0,
     });
   });
 
-  // Common Save Handler for POST and PUT (Protected by Object-Level Authorization)
+  // Common Save Handler for POST and PUT (with automatic smart merge)
   const saveFamilyHandler: express.RequestHandler = (req, res) => {
     const { familyId } = req.params;
-    const { events, shifts, memberNames, clientUpdatedAt } = req.body;
+    const { events, shifts, memberNames, deletedEventIds, deletedShiftIds } = req.body;
 
     if (!isValidFamilyId(familyId)) {
       return res.status(400).json({ error: 'Érvénytelen családi azonosító formátum.' });
     }
 
-    // BOLA Check: Require a cryptographic access key to register or modify a family
-    const key = extractKeyFromRequest(req);
-    if (!key || key.length < 12) {
-      return res.status(401).json({
-        error: 'Érvénytelen vagy hiányzó hozzáférési kulcs (minimum 12 karakter szükséges).',
-      });
-    }
-
     const current = familyStore.get(familyId);
 
-    if (current) {
-      // BOLA Check: Verify the caller holds the authorization key for this family
-      if (!verifyKey(key, current.keyHash)) {
-        return res.status(403).json({
-          error: 'Hozzáférés megtagadva (BOLA védelem). Nincs jogosultságod módosítani ezt a családi naptárat.',
-        });
-      }
-
-      // Expiration check
-      if (current.keyExpiresAt && Date.now() > current.keyExpiresAt) {
-        return res.status(401).json({
-          error: 'A hozzáférési kulcs vagy meghívó lejárt. Kérj új meghívót a naptár tulajdonosától.',
-          expired: true,
-        });
-      }
-    } else {
-      // Guard total families in store (prevents storage DOS)
-      if (familyStore.size >= 5000) {
-        return res.status(507).json({ error: 'A szerver tárhelykapacitása megtelt.' });
-      }
+    // Guard total families in store (prevents storage DOS)
+    if (!current && familyStore.size >= 5000) {
+      return res.status(507).json({ error: 'A szerver tárhelykapacitása megtelt.' });
     }
 
-    const keyHash = current ? current.keyHash : hashKey(key);
-    const keyExpiresAt = current ? current.keyExpiresAt : undefined;
     const now = Date.now();
 
-    // Sanitize events array (max 1200 items, bounded string lengths)
-    const rawEvents = Array.isArray(events) ? events.slice(0, 1200) : [];
-    let finalEvents = rawEvents
+    // Sanitize incoming events (max 1500 items, bounded string lengths)
+    const rawIncomingEvents = Array.isArray(events) ? events.slice(0, 1500) : [];
+    const sanitizedIncomingEvents = rawIncomingEvents
       .filter((e) => e && typeof e === 'object' && typeof e.id === 'string')
       .map((e) => ({
         ...e,
@@ -299,53 +248,69 @@ async function startServer() {
         location: sanitizeStr(e.location, 200),
       }));
 
-    // Sanitize shifts array (max 500 items)
-    const rawShifts = Array.isArray(shifts) ? shifts.slice(0, 500) : [];
-    let finalShifts = rawShifts.filter(
+    // Sanitize incoming shifts (max 800 items)
+    const rawIncomingShifts = Array.isArray(shifts) ? shifts.slice(0, 800) : [];
+    const sanitizedIncomingShifts = rawIncomingShifts.filter(
       (s) => s && typeof s === 'object' && typeof s.memberId === 'string' && typeof s.date === 'string'
     );
 
-    // Sanitize memberNames
-    let finalMemberNames: Record<string, string> = current?.memberNames || {};
+    // Deleted IDs
+    const deletedEventSet = new Set<string>(
+      Array.isArray(deletedEventIds) ? deletedEventIds.filter((id) => typeof id === 'string') : []
+    );
+    const deletedShiftSet = new Set<string>(
+      Array.isArray(deletedShiftIds) ? deletedShiftIds.filter((id) => typeof id === 'string') : []
+    );
+
+    // Smart Merge Events
+    const eventMap = new Map<string, any>();
+    if (current && Array.isArray(current.events)) {
+      for (const e of current.events) {
+        if (e && e.id && !deletedEventSet.has(e.id)) {
+          eventMap.set(e.id, e);
+        }
+      }
+    }
+    for (const e of sanitizedIncomingEvents) {
+      if (!deletedEventSet.has(e.id)) {
+        const existing = eventMap.get(e.id);
+        if (!existing || (e.updatedAt || e.createdAt || 0) >= (existing.updatedAt || existing.createdAt || 0)) {
+          eventMap.set(e.id, e);
+        }
+      }
+    }
+    const finalEvents = Array.from(eventMap.values());
+
+    // Smart Merge Shifts (keyed by memberId_date)
+    const shiftMap = new Map<string, any>();
+    if (current && Array.isArray(current.shifts)) {
+      for (const s of current.shifts) {
+        const shiftKey = `${s.memberId}_${s.date}`;
+        if (s && s.id && !deletedShiftSet.has(s.id) && !deletedShiftSet.has(shiftKey)) {
+          shiftMap.set(shiftKey, s);
+        }
+      }
+    }
+    for (const s of sanitizedIncomingShifts) {
+      const shiftKey = `${s.memberId}_${s.date}`;
+      if (!deletedShiftSet.has(s.id) && !deletedShiftSet.has(shiftKey)) {
+        shiftMap.set(shiftKey, s);
+      }
+    }
+    const finalShifts = Array.from(shiftMap.values());
+
+    // Smart Merge memberNames
+    let finalMemberNames: Record<string, string> = { ...(current?.memberNames || {}) };
     if (memberNames && typeof memberNames === 'object' && !Array.isArray(memberNames)) {
-      const sanitized: Record<string, string> = {};
       for (const [mId, mName] of Object.entries(memberNames)) {
         if (typeof mId === 'string' && mId.length <= 32 && typeof mName === 'string') {
-          sanitized[mId] = sanitizeStr(mName, 50);
+          finalMemberNames[mId] = sanitizeStr(mName, 50);
         }
       }
-      finalMemberNames = sanitized;
-    }
-
-    // Merge concurrent client updates
-    if (current && clientUpdatedAt && clientUpdatedAt < current.updatedAt) {
-      const eventMap = new Map<string, any>();
-      for (const e of current.events || []) {
-        if (e && e.id) eventMap.set(e.id, e);
-      }
-      for (const e of finalEvents) {
-        if (e && e.id) {
-          const existing = eventMap.get(e.id);
-          if (!existing || (e.createdAt || 0) >= (existing.createdAt || 0)) {
-            eventMap.set(e.id, e);
-          }
-        }
-      }
-      finalEvents = Array.from(eventMap.values());
-
-      const shiftMap = new Map<string, any>();
-      for (const s of current.shifts || []) {
-        if (s && s.memberId && s.date) shiftMap.set(`${s.memberId}_${s.date}`, s);
-      }
-      for (const s of finalShifts) {
-        if (s && s.memberId && s.date) shiftMap.set(`${s.memberId}_${s.date}`, s);
-      }
-      finalShifts = Array.from(shiftMap.values());
     }
 
     const updatedData: FamilyData = {
-      keyHash,
-      keyExpiresAt,
+      keyHash: current?.keyHash || '',
       events: finalEvents,
       shifts: finalShifts,
       memberNames: finalMemberNames,

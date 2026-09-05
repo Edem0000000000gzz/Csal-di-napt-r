@@ -190,31 +190,29 @@ export function generateNewFamilyId(): string {
 
 /**
  * Extracts family credentials (ID and secret access key) from the current URL.
- * Checks URL fragment hash first (#join=... or #csalad=...) to preserve privacy against server logs,
- * with fallback to query parameters (?csalad=, ?family=).
+ * Checks query parameters first (?csalad=, ?family=, ?join=) as they survive chat apps,
+ * and URL fragment hash fallback (#csalad=, #join=, #family=).
  */
 export function extractFamilyCredentialsFromUrl(): { familyId: string; accessKey?: string } | null {
   try {
     let familyId: string | null = null;
     let accessKey: string | undefined;
 
-    // 1. Check URL Fragment Hash (#join=... or #csalad=... or #family=...)
-    if (typeof window !== 'undefined' && window.location.hash) {
-      const hashClean = window.location.hash.replace(/^#/, '');
-      const hashParams = new URLSearchParams(hashClean);
-      familyId = hashParams.get('join') || hashParams.get('csalad') || hashParams.get('family');
-      const k = hashParams.get('key');
+    // 1. Check Query Parameters (?csalad= or ?family= or ?join=) - Highest reliability in chat apps
+    if (typeof window !== 'undefined' && window.location.search) {
+      const params = new URLSearchParams(window.location.search);
+      familyId = params.get('csalad') || params.get('family') || params.get('join');
+      const k = params.get('key');
       if (k && k.trim()) accessKey = k.trim();
     }
 
-    // 2. Check Query Parameters fallback (?csalad= or ?family=)
-    if (!familyId && typeof window !== 'undefined' && window.location.search) {
-      const params = new URLSearchParams(window.location.search);
-      familyId = params.get('csalad') || params.get('family');
-      if (!accessKey) {
-        const k = params.get('key');
-        if (k && k.trim()) accessKey = k.trim();
-      }
+    // 2. Check URL Fragment Hash (#join=... or #csalad=... or #family=...)
+    if (!familyId && typeof window !== 'undefined' && window.location.hash) {
+      const hashClean = window.location.hash.replace(/^#/, '');
+      const hashParams = new URLSearchParams(hashClean);
+      familyId = hashParams.get('csalad') || hashParams.get('join') || hashParams.get('family');
+      const k = hashParams.get('key');
+      if (k && k.trim()) accessKey = k.trim();
     }
 
     if (familyId && familyId.trim().length >= 3) {
@@ -238,15 +236,23 @@ export function extractFamilyIdFromUrl(): string | null {
 }
 
 /**
- * Generates a complete, shareable private invite link.
- * All credentials (familyId and accessKey) are placed exclusively in the URL hash fragment (#),
- * so they are strictly handled client-side and NEVER transmitted to web servers, server logs, or Referrer headers.
+ * Generates a clean, highly reliable shareable invite link.
+ * Query parameter format (?csalad=...) guarantees compatibility across
+ * Messenger, WhatsApp, Viber, SMS, and in-app webviews.
  */
 export function buildFamilyInviteLink(familyId: string, accessKey?: string): string {
   const origin = window.location.origin;
   const path = window.location.pathname;
-  const key = accessKey || getActiveFamilyAccessKey();
-  return `${origin}${path}#join=${encodeURIComponent(familyId)}&key=${encodeURIComponent(key)}`;
+  return `${origin}${path}?csalad=${encodeURIComponent(familyId)}`;
+}
+
+/**
+ * Alternative hash-based invite link if preferred.
+ */
+export function buildFamilyHashInviteLink(familyId: string, accessKey?: string): string {
+  const origin = window.location.origin;
+  const path = window.location.pathname;
+  return `${origin}${path}#csalad=${encodeURIComponent(familyId)}`;
 }
 
 /**
@@ -288,7 +294,7 @@ export async function rotateFamilyAccessKey(
 }
 
 /**
- * Fetches the family's latest data from the server with Authorization Bearer token.
+ * Fetches the family's latest data from the server.
  */
 export async function fetchFamilyData(familyId: string, accessKey?: string): Promise<SyncResponse> {
   try {
@@ -327,7 +333,7 @@ export async function fetchFamilyData(familyId: string, accessKey?: string): Pro
 }
 
 /**
- * Pushes the family's calendar data to the server with Authorization Bearer token.
+ * Pushes the family's calendar data to the server and receives merged data back.
  */
 export async function pushFamilyData(
   familyId: string,
@@ -335,7 +341,9 @@ export async function pushFamilyData(
   shifts: ParentShift[],
   clientUpdatedAt?: number,
   memberNames?: Record<string, string>,
-  accessKey?: string
+  accessKey?: string,
+  deletedEventIds?: string[],
+  deletedShiftIds?: string[]
 ): Promise<SyncResponse> {
   try {
     const key = accessKey || getActiveFamilyAccessKey();
@@ -353,30 +361,22 @@ export async function pushFamilyData(
         events,
         shifts,
         memberNames,
+        deletedEventIds,
+        deletedShiftIds,
         clientUpdatedAt: clientUpdatedAt || Date.now(),
       }),
     });
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      if (res.status === 409 && data.conflict) {
-        return {
-          success: false,
-          conflict: true,
-          events: data.events,
-          shifts: data.shifts,
-          memberNames: data.memberNames,
-          updatedAt: data.updatedAt,
-        };
-      }
       return { success: false, error: data.error || `HTTP ${res.status}` };
     }
 
     return {
       success: true,
       updatedAt: data.updatedAt,
-      events: data.events,
-      shifts: data.shifts,
+      events: Array.isArray(data.events) ? data.events : undefined,
+      shifts: Array.isArray(data.shifts) ? data.shifts : undefined,
       memberNames: data.memberNames,
     };
   } catch (err: any) {
