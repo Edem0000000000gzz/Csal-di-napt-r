@@ -124,14 +124,14 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
-            {/* Invite Family Private Link / QR Button */}
+            {/* Invite Family Private Link Button */}
             <button
               onClick={onOpenInviteModal}
-              title="Családtagok meghívása és QR-kód a mobilhoz"
+              title="Családtagok meghívása egyedi linken keresztül"
               className="flex items-center justify-center w-7 h-7 sm:w-auto sm:px-3 sm:py-2 rounded-lg sm:rounded-xl text-xs font-semibold transition cursor-pointer shadow-xs border bg-indigo-950/70 border-indigo-700/80 text-indigo-200 hover:bg-indigo-900/80 hover:border-indigo-500 shrink-0"
             >
               <Users className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="hidden sm:inline sm:ml-1.5">Megosztás & QR</span>
+              <span className="hidden sm:inline sm:ml-1.5">Meghívás</span>
             </button>
 
             {/* PDF Export Button */}

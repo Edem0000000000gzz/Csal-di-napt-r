@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import QRCode from 'qrcode';
 import {
   X,
   Link2,
@@ -8,7 +7,6 @@ import {
   Share2,
   Users,
   ShieldCheck,
-  QrCode,
   Sparkles,
   RefreshCw,
   LogOut,
@@ -47,8 +45,6 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
-  const [showQr, setShowQr] = useState(false);
-  const [qrImageUrl, setQrImageUrl] = useState<string>('');
   const [activeKey, setActiveKey] = useState<string>(() => getActiveFamilyAccessKey());
   const [isRotating, setIsRotating] = useState(false);
   const [rotateMessage, setRotateMessage] = useState<string | null>(null);
@@ -101,43 +97,6 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
     }
   };
 
-  useEffect(() => {
-    if (!inviteLink || !showQr) {
-      return;
-    }
-    const fallbackUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=10&data=${encodeURIComponent(
-      inviteLink
-    )}`;
-
-    try {
-      if (QRCode && typeof QRCode.toDataURL === 'function') {
-        QRCode.toDataURL(
-          inviteLink,
-          {
-            width: 260,
-            margin: 2,
-            color: {
-              dark: '#ffffff',
-              light: '#0f172a',
-            },
-          },
-          (err: any, url: string) => {
-            if (!err && url) {
-              setQrImageUrl(url);
-            } else {
-              setQrImageUrl(fallbackUrl);
-            }
-          }
-        );
-      } else {
-        setQrImageUrl(fallbackUrl);
-      }
-    } catch (err) {
-      console.warn('Local QRCode generator encountered an issue, using fallback image', err);
-      setQrImageUrl(fallbackUrl);
-    }
-  }, [inviteLink, showQr]);
-
   const handleCopyLink = async () => {
     if (!inviteLink) return;
     try {
@@ -161,8 +120,8 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
     if (navigator.share) {
       try {
         await navigator.share({
-          title: 'Családi Naptár – Privát Meghívó',
-          text: 'Csatlakozz a közös családi naptárunkhoz ezen a privát linken keresztül!',
+          title: 'Családi Naptár – Privát Meghívó Link',
+          text: 'Csatlakozz a közös családi naptárunkhoz ezen a linken keresztül!',
           url: inviteLink,
         });
       } catch {
@@ -180,9 +139,9 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
       if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
         confirmRevoke = window.confirm(
           'BIZTOSAN VISSZAVONOD A JELENLEGI MEGHÍVÓT ÉS KULCSOT?\n\n' +
-            '• Minden eddig megosztott link és kinyomtatott QR-kód AZONNAL érvénytelenné válik.\n' +
+            '• Minden eddig megosztott link AZONNAL érvénytelenné válik.\n' +
             '• Külső személyek, akik korábban megszerezték a linket, többé nem férhetnek hozzá.\n' +
-            '• A családtagoknak át kell küldened az új linket vagy QR-kódot.'
+            '• A családtagoknak át kell küldened az új linket.'
         );
       }
     } catch {
@@ -200,7 +159,7 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
 
     if (res.success && res.newKey) {
       setActiveKey(res.newKey);
-      setRotateMessage('A régi hozzáférés és a korábbi QR-kód visszavonva! Sikeresen generáltunk új hozzáférési kulcsot.');
+      setRotateMessage('A korábbi meghívó link visszavonva! Sikeresen generáltunk új hozzáférési kulcsot.');
       setTimeout(() => setRotateMessage(null), 8000);
     } else {
       setRotateError(res.error || 'Nem sikerült visszavonni a kulcsot.');
@@ -346,47 +305,17 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
                 </div>
               </div>
 
-              {/* Action Buttons: Native Share + QR Code */}
-              <div className="grid grid-cols-2 gap-2 pt-1">
+              {/* Action Button: Native Share */}
+              <div className="pt-1">
                 <button
                   type="button"
                   onClick={handleNativeShare}
-                  className="flex items-center justify-center gap-2 p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition cursor-pointer"
+                  className="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition cursor-pointer shadow-md shadow-indigo-600/25"
                 >
-                  <Share2 className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Küldés (WhatsApp / SMS)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowQr(!showQr)}
-                  className={`flex items-center justify-center gap-2 p-2.5 rounded-xl border text-xs font-semibold transition cursor-pointer ${
-                    showQr
-                      ? 'bg-indigo-950/60 border-indigo-700 text-indigo-200'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
-                  }`}
-                >
-                  <QrCode className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>{showQr ? 'QR kód elrejtése' : 'QR kód leolvasása'}</span>
+                  <Share2 className="w-4 h-4" />
+                  <span>Meghívó link megosztása (WhatsApp / Messenger / SMS)</span>
                 </button>
               </div>
-
-              {/* QR Code display */}
-              {showQr && (
-                <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-center space-y-2 animate-in fade-in">
-                  <div className="inline-block p-2 bg-slate-900 border border-slate-700 rounded-2xl shadow-inner">
-                    <img
-                      src={qrImageUrl}
-                      alt="Családi naptár QR kód"
-                      className="w-48 h-48 rounded-xl mx-auto"
-                      loading="lazy"
-                    />
-                  </div>
-                  <p className="text-[11px] text-slate-300 font-medium">
-                    A párod egyszerűen nyissa meg a telefonján a normál kamerát, olvassa be ezt a képernyőről, és azonnal közös naptárban lesztek!
-                  </p>
-                </div>
-              )}
 
               {/* Connect to another family code */}
               {onJoinFamily && (
@@ -481,7 +410,7 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
                     </span>
                   </button>
                   <p className="text-[10px] text-slate-400 leading-tight">
-                    Ha illetéktelen személy jutott a linkhez vagy a QR-kódhoz, ezzel a gombbal azonnal letilthatod az összes korábbi meghívót. A régi QR-kód és link azonnal használhatatlanná válik.
+                    Ha illetéktelen személy jutott a linkhez, ezzel a gombbal azonnal letilthatod az összes korábbi meghívót. A régi link azonnal használhatatlanná válik.
                   </p>
                 </div>
               </div>
@@ -513,8 +442,8 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
                       Igen! A fenti gombbal a kulcs bármikor egyetlen kattintással visszavonható. Ezen felül kérhető 7 vagy 30 napos automatikus lejárat is.
                     </div>
                     <div>
-                      <strong className="text-white block">3. A régi QR-kód működik-e a visszavonás után?</strong>
-                      <span className="text-rose-300 font-semibold">NEM!</span> A szerver azonnal érvényteleníti a régi kulcs hash-ét. Bárki, aki a régi QR-kódot beolvassa vagy a korábbi linket nyitja meg, 403 Forbidden hibát kap.
+                      <strong className="text-white block">3. A régi link működik-e a visszavonás után?</strong>
+                      <span className="text-rose-300 font-semibold">NEM!</span> A szerver azonnal érvényteleníti a régi kulcs hash-ét. Bárki, aki a korábbi linket nyitja meg, 403 Forbidden hibát kap.
                     </div>
                     <div>
                       <strong className="text-white block">4. Megszerezhető-e a linkből személyes adat?</strong>
