@@ -35,7 +35,7 @@ interface MonthlyViewProps {
   memberNames?: Record<string, string>;
   onUpdateMemberName?: (memberId: FamilyMemberId | string, newName: string) => void;
   onOpenEventModal: (date: string, event?: CalendarEvent) => void;
-  onOpenShiftModal: (date: string) => void;
+  onOpenShiftModal: (date: string, parent?: 'apa' | 'anya') => void;
   onDeleteEvent?: (eventId: string) => void;
   onToggleEventCompleted?: (eventId: string) => void;
 }
@@ -54,6 +54,7 @@ export const MonthlyView: React.FC<MonthlyViewProps> = ({
   onToggleEventCompleted,
 }) => {
   const [dayDetailsModalIso, setDayDetailsModalIso] = useState<string | null>(null);
+  const [confirmDeleteEventId, setConfirmDeleteEventId] = useState<string | null>(null);
   const year = currentDate.getFullYear();
   const monthIndex = currentDate.getMonth();
 
@@ -246,20 +247,42 @@ export const MonthlyView: React.FC<MonthlyViewProps> = ({
                     {hasApaShift && (
                       <div
                         className="flex items-center gap-0.5 text-[8px] sm:text-[9px] px-1 py-0.2 sm:py-0.5 rounded font-bold bg-sky-950 text-sky-200 border border-sky-800/70 truncate shadow-2xs"
-                        title={`${getMemberName('apa', memberNames) || '1. Műszakos (Kék)'} munkaidő: ${apaShift.startTime || '07:00'}-${apaShift.endTime || '15:00'}`}
+                        title={`${getMemberName('apa', memberNames) || 'Apa'} munkaidő: ${apaShift.startTime || '07:00'} - ${apaShift.endTime || '15:00'}${apaShift.note ? ` (${apaShift.note})` : ''}`}
                       >
                         <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
-                        <span className="truncate">{getMemberName('apa', memberNames) || '1. Műszak'}: {apaShift.startTime ? `${apaShift.startTime.slice(0, 2)}-${apaShift.endTime?.slice(0, 2)}` : '07-15'}</span>
+                        <span className="truncate">
+                          {getMemberName('apa', memberNames) || 'Apa'}: {apaShift.startTime && apaShift.endTime ? `${apaShift.startTime.slice(0, 5)}-${apaShift.endTime.slice(0, 5)}` : (apaShift.shiftType || '07:00-15:00')}
+                        </span>
+                      </div>
+                    )}
+                    {apaShift && apaShift.isOffDay && (
+                      <div
+                        className="flex items-center gap-0.5 text-[8px] sm:text-[9px] px-1 py-0.2 sm:py-0.5 rounded font-semibold bg-slate-800 text-sky-300 border border-slate-700 truncate shadow-2xs"
+                        title={`${getMemberName('apa', memberNames) || 'Apa'}: Szabadnap / Pihenő`}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-sky-400/50 shrink-0" />
+                        <span className="truncate">{getMemberName('apa', memberNames) || 'Apa'}: Szabadnap</span>
                       </div>
                     )}
 
                     {hasAnyaShift && (
                       <div
                         className="flex items-center gap-0.5 text-[8px] sm:text-[9px] px-1 py-0.2 sm:py-0.5 rounded font-bold bg-rose-950 text-rose-200 border border-rose-800/70 truncate shadow-2xs"
-                        title={`${getMemberName('anya', memberNames) || '2. Műszakos (Piros)'} munkaidő: ${anyaShift.startTime || '06:00'}-${anyaShift.endTime || '18:00'}`}
+                        title={`${getMemberName('anya', memberNames) || 'Anya'} munkaidő: ${anyaShift.startTime || '06:00'} - ${anyaShift.endTime || '18:00'}${anyaShift.note ? ` (${anyaShift.note})` : ''}`}
                       >
                         <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
-                        <span className="truncate">{getMemberName('anya', memberNames) || '2. Műszak'}: {anyaShift.startTime ? `${anyaShift.startTime.slice(0, 2)}-${anyaShift.endTime?.slice(0, 2)}` : '06-18'}</span>
+                        <span className="truncate">
+                          {getMemberName('anya', memberNames) || 'Anya'}: {anyaShift.startTime && anyaShift.endTime ? `${anyaShift.startTime.slice(0, 5)}-${anyaShift.endTime.slice(0, 5)}` : (anyaShift.shiftType || '06:00-18:00')}
+                        </span>
+                      </div>
+                    )}
+                    {anyaShift && anyaShift.isOffDay && (
+                      <div
+                        className="flex items-center gap-0.5 text-[8px] sm:text-[9px] px-1 py-0.2 sm:py-0.5 rounded font-semibold bg-slate-800 text-rose-300 border border-slate-700 truncate shadow-2xs"
+                        title={`${getMemberName('anya', memberNames) || 'Anya'}: Szabadnap / Pihenő`}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-400/50 shrink-0" />
+                        <span className="truncate">{getMemberName('anya', memberNames) || 'Anya'}: Szabadnap</span>
                       </div>
                     )}
                   </div>
@@ -330,52 +353,65 @@ export const MonthlyView: React.FC<MonthlyViewProps> = ({
                     <Briefcase className="w-3.5 h-3.5 text-indigo-400" />
                     Szülői munkaidő ezen a napon:
                   </span>
-                  <button
-                    onClick={() => {
-                      const date = dayDetailsModalIso;
-                      setDayDetailsModalIso(null);
-                      onOpenShiftModal(date);
-                    }}
-                    className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer flex items-center gap-1"
-                  >
-                    <Edit3 className="w-3 h-3" />
-                    Módosítás
-                  </button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {/* Apa */}
-                  <div className="p-2.5 rounded-xl bg-slate-900 border border-sky-900/80 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                  <div className="p-2.5 rounded-xl bg-slate-900 border border-sky-900/80 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       <span className="w-3 h-3 rounded-full bg-sky-500 shrink-0" />
-                      <div>
-                        <span className="font-bold text-sky-300 text-xs block">{getMemberName('apa', memberNames) || '1. Műszakos (Kék)'}</span>
-                        <span className="text-slate-300 text-xs">
+                      <div className="min-w-0">
+                        <span className="font-bold text-sky-300 text-xs block truncate">{getMemberName('apa', memberNames) || 'Apa'}</span>
+                        <span className="text-slate-300 text-xs block truncate">
                           {modalDayShifts.apa
                             ? modalDayShifts.apa.isOffDay
-                              ? 'Szabadnap'
-                              : `${modalDayShifts.apa.startTime || '07:00'} - ${modalDayShifts.apa.endTime || '15:00'}`
-                            : 'Nincs rögzítve (07:00 - 15:00)'}
+                              ? 'Szabadnap / Pihenőnap'
+                              : `${modalDayShifts.apa.startTime || '07:00'} - ${modalDayShifts.apa.endTime || '15:00'}${modalDayShifts.apa.note ? ` (${modalDayShifts.apa.note})` : ''}`
+                            : 'Nincs külön rögzítve (07:00 - 15:00)'}
                         </span>
                       </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const date = dayDetailsModalIso;
+                        setDayDetailsModalIso(null);
+                        onOpenShiftModal(date, 'apa');
+                      }}
+                      className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-sky-950 hover:bg-sky-900 text-sky-300 border border-sky-800 transition cursor-pointer"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                      <span>Módosítás</span>
+                    </button>
                   </div>
 
                   {/* Anya */}
-                  <div className="p-2.5 rounded-xl bg-slate-900 border border-rose-900/80 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                  <div className="p-2.5 rounded-xl bg-slate-900 border border-rose-900/80 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       <span className="w-3 h-3 rounded-full bg-rose-500 shrink-0" />
-                      <div>
-                        <span className="font-bold text-rose-300 text-xs block">{getMemberName('anya', memberNames) || '2. Műszakos (Piros)'}</span>
-                        <span className="text-slate-300 text-xs">
+                      <div className="min-w-0">
+                        <span className="font-bold text-rose-300 text-xs block truncate">{getMemberName('anya', memberNames) || 'Anya'}</span>
+                        <span className="text-slate-300 text-xs block truncate">
                           {modalDayShifts.anya
                             ? modalDayShifts.anya.isOffDay
-                              ? 'Szabadnap'
-                              : `${modalDayShifts.anya.startTime || '06:00'} - ${modalDayShifts.anya.endTime || '18:00'}`
-                            : 'Nincs rögzítve (06:00 - 18:00)'}
+                              ? 'Szabadnap / Pihenőnap'
+                              : `${modalDayShifts.anya.startTime || '06:00'} - ${modalDayShifts.anya.endTime || '18:00'}${modalDayShifts.anya.note ? ` (${modalDayShifts.anya.note})` : ''}`
+                            : 'Nincs külön rögzítve (06:00 - 18:00)'}
                         </span>
                       </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const date = dayDetailsModalIso;
+                        setDayDetailsModalIso(null);
+                        onOpenShiftModal(date, 'anya');
+                      }}
+                      className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800 transition cursor-pointer"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                      <span>Módosítás</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -531,18 +567,37 @@ export const MonthlyView: React.FC<MonthlyViewProps> = ({
                             </button>
 
                             {onDeleteEvent && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (confirm(`Biztosan törölni szeretnéd a(z) "${ev.title}" eseményt?`)) {
-                                    onDeleteEvent(ev.id);
-                                  }
-                                }}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border border-slate-700 hover:border-rose-900 transition cursor-pointer"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                                <span>Törlés</span>
-                              </button>
+                              confirmDeleteEventId === ev.id ? (
+                                <div className="flex items-center gap-1.5 bg-rose-950/80 border border-rose-800/80 rounded-xl px-2 py-1">
+                                  <span className="text-[11px] text-rose-200 font-medium">Biztosan törlöd?</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      onDeleteEvent(ev.id);
+                                      setConfirmDeleteEventId(null);
+                                    }}
+                                    className="px-2 py-0.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition cursor-pointer"
+                                  >
+                                    Igen, törlés
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmDeleteEventId(null)}
+                                    className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                                  >
+                                    Mégse
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDeleteEventId(ev.id)}
+                                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border border-slate-700 hover:border-rose-900 transition cursor-pointer"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  <span>Törlés</span>
+                                </button>
+                              )
                             )}
                           </div>
                         </div>
@@ -555,7 +610,7 @@ export const MonthlyView: React.FC<MonthlyViewProps> = ({
 
             {/* Modal Footer with Actions */}
             <div className="p-3.5 sm:p-4 border-t border-slate-800 bg-slate-850 flex flex-wrap items-center justify-between gap-2 shrink-0">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -574,12 +629,25 @@ export const MonthlyView: React.FC<MonthlyViewProps> = ({
                   onClick={() => {
                     const date = dayDetailsModalIso;
                     setDayDetailsModalIso(null);
-                    onOpenShiftModal(date);
+                    onOpenShiftModal(date, 'apa');
                   }}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs sm:text-sm font-semibold border border-slate-700 transition cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-950 hover:bg-sky-900 text-sky-200 text-xs sm:text-sm font-semibold border border-sky-800/80 transition cursor-pointer"
                 >
-                  <Briefcase className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>Munkaidő</span>
+                  <Briefcase className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Apa munkaidő</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const date = dayDetailsModalIso;
+                    setDayDetailsModalIso(null);
+                    onOpenShiftModal(date, 'anya');
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-950 hover:bg-rose-900 text-rose-200 text-xs sm:text-sm font-semibold border border-rose-800/80 transition cursor-pointer"
+                >
+                  <Briefcase className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Anya munkaidő</span>
                 </button>
               </div>
 

@@ -60,6 +60,7 @@ export interface CalendarEvent {
   customReminderDateTime?: string; // YYYY-MM-DDTHH:mm
   isCompleted?: boolean;
   createdAt: number;
+  updatedAt?: number;
 }
 
 export interface ParentShift {
@@ -71,6 +72,7 @@ export interface ParentShift {
   endTime?: string; // HH:mm
   isOffDay?: boolean;
   note?: string;
+  updatedAt?: number;
 }
 
 export type CalendarViewMode = 'week' | 'month' | 'matrix' | 'agenda';

@@ -46,8 +46,10 @@ export const EventModal: React.FC<EventModalProps> = ({
   const [notes, setNotes] = useState('');
   const [reminder, setReminder] = useState<ReminderTime>('none');
   const [customReminderDateTime, setCustomReminderDateTime] = useState('');
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
   React.useEffect(() => {
+    setIsConfirmingDelete(false);
     if (editEvent) {
       setTitle(editEvent.title);
       setMemberId(editEvent.memberId);
@@ -95,6 +97,7 @@ export const EventModal: React.FC<EventModalProps> = ({
       reminder,
       customReminderDateTime: reminder === 'custom' ? customReminderDateTime : undefined,
       createdAt: editEvent ? editEvent.createdAt : Date.now(),
+      updatedAt: Date.now(),
       isCompleted: editEvent?.isCompleted || false,
     };
 
@@ -360,17 +363,37 @@ export const EventModal: React.FC<EventModalProps> = ({
           {/* Actions */}
           <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-3">
             {editEvent && onDeleteEvent ? (
-              <button
-                type="button"
-                onClick={() => {
-                  onDeleteEvent(editEvent.id);
-                  onClose();
-                }}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-rose-400 hover:bg-rose-950/40 text-xs font-semibold transition cursor-pointer"
-              >
-                <Trash2 className="w-4 h-4" />
-                Törlés
-              </button>
+              isConfirmingDelete ? (
+                <div className="flex items-center gap-1.5 bg-rose-950/80 border border-rose-800/80 rounded-xl px-2.5 py-1">
+                  <span className="text-xs text-rose-200 font-medium">Biztosan törlöd?</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onDeleteEvent(editEvent.id);
+                      onClose();
+                    }}
+                    className="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition cursor-pointer"
+                  >
+                    Igen, törlés
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsConfirmingDelete(false)}
+                    className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                  >
+                    Mégse
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmingDelete(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-rose-400 hover:bg-rose-950/40 text-xs font-semibold transition cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Törlés
+                </button>
+              )
             ) : <div />}
 
             <div className="flex items-center gap-2">

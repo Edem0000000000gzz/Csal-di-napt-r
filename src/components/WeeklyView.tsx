@@ -24,7 +24,7 @@ interface WeeklyViewProps {
   shifts: ParentShift[];
   selectedMember: FamilyMemberId;
   onOpenEventModal: (date: string, event?: CalendarEvent) => void;
-  onOpenShiftModal: (date: string) => void;
+  onOpenShiftModal: (date: string, parent?: 'apa' | 'anya') => void;
   onToggleEventCompleted: (eventId: string) => void;
   memberNames?: Record<string, string>;
 }
@@ -175,54 +175,48 @@ export const WeeklyView: React.FC<WeeklyViewProps> = ({
                     <Briefcase className="w-2.5 h-2.5 text-indigo-400" />
                     Munkaidő:
                   </span>
-                  <button
-                    onClick={() => onOpenShiftModal(day.iso)}
-                    className="text-[10px] text-indigo-400 hover:text-indigo-300 font-semibold hover:underline cursor-pointer"
-                  >
-                    Módosítás
-                  </button>
                 </div>
 
                 {/* Apa shift pill */}
                 <div
-                  onClick={() => onOpenShiftModal(day.iso)}
+                  onClick={() => onOpenShiftModal(day.iso, 'apa')}
                   className={`flex items-center justify-between text-[11px] px-2 py-1 rounded-lg border cursor-pointer hover:border-sky-500 transition shadow-2xs ${
                     apaShift
                       ? 'bg-sky-950/60 border-sky-900/80 text-sky-200'
                       : 'bg-slate-800/40 border-dashed border-slate-700/80 text-slate-400 hover:text-sky-300'
                   }`}
                 >
-                  <div className="flex items-center gap-1.5 font-semibold">
-                    <span className={`w-1.5 h-1.5 rounded-full ${apaShift ? 'bg-sky-400' : 'bg-slate-600'}`} />
-                    <span>{getMemberName('apa', memberNames) || '1. Műszak'}:</span>
+                  <div className="flex items-center gap-1.5 font-semibold min-w-0">
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${apaShift ? 'bg-sky-400' : 'bg-slate-600'}`} />
+                    <span className="truncate">{getMemberName('apa', memberNames) || 'Apa'}:</span>
                   </div>
-                  <span className="font-bold text-[10px]">
+                  <span className="font-bold text-[10px] shrink-0 ml-1">
                     {apaShift
                       ? apaShift.isOffDay
                         ? 'Szabadnap'
-                        : apaShift.shiftType || `${apaShift.startTime || '07:00'} - ${apaShift.endTime || '15:00'}`
+                        : `${apaShift.startTime || '07:00'} - ${apaShift.endTime || '15:00'}${apaShift.note ? ` (${apaShift.note})` : ''}`
                       : 'Nincs rögzítve'}
                   </span>
                 </div>
 
                 {/* Anya shift pill */}
                 <div
-                  onClick={() => onOpenShiftModal(day.iso)}
+                  onClick={() => onOpenShiftModal(day.iso, 'anya')}
                   className={`flex items-center justify-between text-[11px] px-2 py-1 rounded-lg border cursor-pointer hover:border-rose-500 transition shadow-2xs ${
                     anyaShift
                       ? 'bg-rose-950/60 border-rose-900/80 text-rose-200'
                       : 'bg-slate-800/40 border-dashed border-slate-700/80 text-slate-400 hover:text-rose-300'
                   }`}
                 >
-                  <div className="flex items-center gap-1.5 font-semibold">
-                    <span className={`w-1.5 h-1.5 rounded-full ${anyaShift ? 'bg-rose-400' : 'bg-slate-600'}`} />
-                    <span>{getMemberName('anya', memberNames) || '2. Műszak'}:</span>
+                  <div className="flex items-center gap-1.5 font-semibold min-w-0">
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${anyaShift ? 'bg-rose-400' : 'bg-slate-600'}`} />
+                    <span className="truncate">{getMemberName('anya', memberNames) || 'Anya'}:</span>
                   </div>
-                  <span className="font-bold text-[10px]">
+                  <span className="font-bold text-[10px] shrink-0 ml-1">
                     {anyaShift
                       ? anyaShift.isOffDay
                         ? 'Szabadnap'
-                        : anyaShift.shiftType || `${anyaShift.startTime || '06:00'} - ${anyaShift.endTime || '18:00'}`
+                        : `${anyaShift.startTime || '06:00'} - ${anyaShift.endTime || '18:00'}${anyaShift.note ? ` (${anyaShift.note})` : ''}`
                       : 'Nincs rögzítve'}
                   </span>
                 </div>

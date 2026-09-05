@@ -89,18 +89,24 @@ export const CATEGORIES: Record<string, CategoryInfo> = {
 };
 
 export const APA_SHIFT_PRESETS = [
+  { label: 'Normál munkaidő (07:00 - 15:00)', startTime: '07:00', endTime: '15:00', isOffDay: false },
   { label: 'Délelőtt (06:00 - 14:00)', startTime: '06:00', endTime: '14:00', isOffDay: false },
   { label: 'Délután (14:00 - 22:00)', startTime: '14:00', endTime: '22:00', isOffDay: false },
   { label: 'Éjszaka (22:00 - 06:00)', startTime: '22:00', endTime: '06:00', isOffDay: false },
+  { label: 'Rövid munkanap (07:00 - 13:00)', startTime: '07:00', endTime: '13:00', isOffDay: false },
   { label: 'Nappalos 12 órás (06:00 - 18:00)', startTime: '06:00', endTime: '18:00', isOffDay: false },
   { label: 'Éjszakás 12 órás (18:00 - 06:00)', startTime: '18:00', endTime: '06:00', isOffDay: false },
   { label: 'Szabadnap', startTime: '', endTime: '', isOffDay: true },
 ];
 
 export const ANYA_SHIFT_PRESETS = [
-  { label: 'Normál munkaidő (08:00 - 16:30)', startTime: '08:00', endTime: '16:30', isOffDay: false },
-  { label: 'Rövid nap (08:00 - 14:00)', startTime: '08:00', endTime: '14:00', isOffDay: false },
+  { label: 'Nappalos 12 órás (06:00 - 18:00)', startTime: '06:00', endTime: '18:00', isOffDay: false },
+  { label: 'Rövid munkanap (06:00 - 14:00)', startTime: '06:00', endTime: '14:00', isOffDay: false },
+  { label: 'Rövid munkanap (08:00 - 14:00)', startTime: '08:00', endTime: '14:00', isOffDay: false },
+  { label: 'Rövid munkanap (08:00 - 12:00)', startTime: '08:00', endTime: '12:00', isOffDay: false },
+  { label: 'Normál irodai (08:00 - 16:30)', startTime: '08:00', endTime: '16:30', isOffDay: false },
   { label: 'Home office (08:30 - 17:00)', startTime: '08:30', endTime: '17:00', isOffDay: false },
+  { label: 'Éjszakás 12 órás (18:00 - 06:00)', startTime: '18:00', endTime: '06:00', isOffDay: false },
   { label: 'Szabadnap', startTime: '', endTime: '', isOffDay: true },
 ];
 

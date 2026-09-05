@@ -20,7 +20,7 @@ interface FamilyMatrixTableProps {
   events: CalendarEvent[];
   shifts: ParentShift[];
   onOpenEventModal: (date: string, event?: CalendarEvent) => void;
-  onOpenShiftModal: (date: string) => void;
+  onOpenShiftModal: (date: string, parent?: 'apa' | 'anya') => void;
   memberNames?: Record<string, string>;
 }
 
@@ -196,7 +196,7 @@ export const FamilyMatrixTable: React.FC<FamilyMatrixTableProps> = ({
                             {member.role === 'szulo' && (
                               shift ? (
                                 <div
-                                  onClick={() => onOpenShiftModal(day.iso)}
+                                  onClick={() => onOpenShiftModal(day.iso, member.id as 'apa' | 'anya')}
                                   className={`p-1.5 rounded-xl border text-[11px] cursor-pointer hover:opacity-90 transition shadow-2xs ${
                                     member.id === 'apa'
                                       ? 'bg-sky-950/60 border-sky-900/80 text-sky-200'
@@ -223,7 +223,7 @@ export const FamilyMatrixTable: React.FC<FamilyMatrixTableProps> = ({
                                 </div>
                               ) : (
                                 <div
-                                  onClick={() => onOpenShiftModal(day.iso)}
+                                  onClick={() => onOpenShiftModal(day.iso, member.id as 'apa' | 'anya')}
                                   className="p-1 rounded-lg border border-dashed border-slate-700/60 text-slate-500 hover:text-slate-300 hover:border-slate-500 text-[10px] text-center cursor-pointer transition"
                                 >
                                   + Munkaidő

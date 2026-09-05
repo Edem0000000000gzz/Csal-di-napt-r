@@ -123,6 +123,7 @@ export default function App() {
 
   const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
   const [selectedShiftDate, setSelectedShiftDate] = useState<string>(getTodayIso());
+  const [initialShiftParent, setInitialShiftParent] = useState<'apa' | 'anya' | undefined>(undefined);
 
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [isReminderCenterOpen, setIsReminderCenterOpen] = useState(false);
@@ -526,8 +527,9 @@ export default function App() {
   };
 
   // Handlers for Shifts
-  const handleOpenShiftModal = (date?: string) => {
+  const handleOpenShiftModal = (date?: string, parent?: 'apa' | 'anya') => {
     setSelectedShiftDate(date || getTodayIso());
+    setInitialShiftParent(parent);
     setIsShiftModalOpen(true);
   };
 
@@ -772,8 +774,12 @@ export default function App() {
 
       <ShiftModal
         isOpen={isShiftModalOpen}
-        onClose={() => setIsShiftModalOpen(false)}
+        onClose={() => {
+          setIsShiftModalOpen(false);
+          setInitialShiftParent(undefined);
+        }}
         selectedDate={selectedShiftDate}
+        initialParent={initialShiftParent}
         currentShifts={shifts}
         memberNames={memberNames}
         onSaveShift={handleSaveShift}

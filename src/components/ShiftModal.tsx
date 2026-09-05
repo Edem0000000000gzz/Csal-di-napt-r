@@ -13,6 +13,7 @@ interface ShiftModalProps {
   onDeleteShift?: (shiftId: string) => void;
   onBatchApplyShifts?: (newShifts: ParentShift[]) => void;
   memberNames?: Record<string, string>;
+  initialParent?: 'apa' | 'anya';
 }
 
 export const ShiftModal: React.FC<ShiftModalProps> = ({
@@ -24,8 +25,9 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
   onDeleteShift,
   onBatchApplyShifts,
   memberNames,
+  initialParent,
 }) => {
-  const [selectedParent, setSelectedParent] = useState<'apa' | 'anya'>('apa');
+  const [selectedParent, setSelectedParent] = useState<'apa' | 'anya'>(initialParent || 'apa');
   const [date, setDate] = useState<string>(selectedDate || formatIsoDate(new Date()));
   const [presetIndex, setPresetIndex] = useState<number>(0);
   const [startTime, setStartTime] = useState<string>('07:00');
@@ -33,39 +35,64 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
   const [isOffDay, setIsOffDay] = useState<boolean>(false);
   const [note, setNote] = useState<string>('');
   const [isManualEdit, setIsManualEdit] = useState<boolean>(false);
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState<boolean>(false);
 
   const apaName = getMemberName('apa', memberNames, true);
   const anyaName = getMemberName('anya', memberNames, true);
   const apaInitial = getMemberInitial('apa', memberNames);
   const anyaInitial = getMemberInitial('anya', memberNames);
 
-  // Sync state when selected parent or date changes
+  // Sync parent when modal opens or initialParent prop changes
+  React.useEffect(() => {
+    if (isOpen) {
+      if (initialParent) {
+        setSelectedParent(initialParent);
+      }
+      setIsConfirmingDelete(false);
+    }
+  }, [isOpen, initialParent]);
+
+  // Sync date when selectedDate changes
   React.useEffect(() => {
     if (selectedDate) {
       setDate(selectedDate);
     }
   }, [selectedDate]);
 
+  // Synchronize hours and presets whenever parent, date or shifts change
   React.useEffect(() => {
+    const currentPresets = selectedParent === 'apa' ? APA_SHIFT_PRESETS : ANYA_SHIFT_PRESETS;
     const existing = currentShifts.find((s) => s.date === date && s.memberId === selectedParent);
+
     if (existing) {
-      setStartTime(existing.startTime || (selectedParent === 'apa' ? '07:00' : '06:00'));
-      setEndTime(existing.endTime || (selectedParent === 'apa' ? '15:00' : '18:00'));
-      setIsOffDay(!!existing.isOffDay);
-      setNote(existing.note || '');
-      setIsManualEdit(true);
-    } else {
-      if (selectedParent === 'apa') {
-        setStartTime('07:00');
-        setEndTime('15:00');
-        setIsOffDay(false);
-        setNote('');
+      // Look for a matching preset
+      const matchIdx = currentPresets.findIndex((p) => {
+        if (existing.isOffDay) return p.isOffDay;
+        return !p.isOffDay && p.startTime === existing.startTime && p.endTime === existing.endTime;
+      });
+
+      if (matchIdx !== -1) {
+        setPresetIndex(matchIdx);
+        setIsOffDay(!!existing.isOffDay);
+        setStartTime(existing.startTime || currentPresets[matchIdx].startTime || (selectedParent === 'apa' ? '07:00' : '06:00'));
+        setEndTime(existing.endTime || currentPresets[matchIdx].endTime || (selectedParent === 'apa' ? '15:00' : '18:00'));
+        setIsManualEdit(false);
       } else {
-        setStartTime('06:00');
-        setEndTime('18:00');
-        setIsOffDay(false);
-        setNote('');
+        setPresetIndex(0);
+        setIsOffDay(!!existing.isOffDay);
+        setStartTime(existing.startTime || (selectedParent === 'apa' ? '07:00' : '06:00'));
+        setEndTime(existing.endTime || (selectedParent === 'apa' ? '15:00' : '18:00'));
+        setIsManualEdit(true);
       }
+      setNote(existing.note || '');
+    } else {
+      // Default to first preset for this parent (Apa: 07:00-15:00, Anya: 06:00-18:00)
+      setPresetIndex(0);
+      const defaultP = currentPresets[0];
+      setIsOffDay(defaultP.isOffDay);
+      setStartTime(defaultP.startTime || (selectedParent === 'apa' ? '07:00' : '06:00'));
+      setEndTime(defaultP.endTime || (selectedParent === 'apa' ? '15:00' : '18:00'));
+      setNote('');
       setIsManualEdit(false);
     }
   }, [selectedParent, date, currentShifts]);
@@ -78,16 +105,12 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     setPresetIndex(idx);
     const selected = presets[idx];
     if (selected) {
-      if (selected.label.includes('Egyedi')) {
-        setIsManualEdit(true);
-      } else {
-        setIsOffDay(selected.isOffDay);
-        if (!selected.isOffDay) {
-          setStartTime(selected.startTime);
-          setEndTime(selected.endTime);
-        }
-        setIsManualEdit(false);
+      setIsOffDay(selected.isOffDay);
+      if (!selected.isOffDay) {
+        setStartTime(selected.startTime);
+        setEndTime(selected.endTime);
       }
+      setIsManualEdit(false);
     }
   };
 
@@ -106,6 +129,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
       endTime: isOffDay ? undefined : endTime,
       isOffDay,
       note: note.trim() || (isOffDay ? 'Pihenőnap' : 'Munkanap'),
+      updatedAt: Date.now(),
     };
 
     onSaveShift(shiftData);
@@ -351,17 +375,37 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
           {/* Actions */}
           <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-3">
             {existingShift && onDeleteShift ? (
-              <button
-                type="button"
-                onClick={() => {
-                  onDeleteShift(existingShift.id);
-                  onClose();
-                }}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-rose-400 hover:bg-rose-950/40 text-xs font-semibold transition cursor-pointer"
-              >
-                <Trash2 className="w-4 h-4" />
-                Törlés
-              </button>
+              isConfirmingDelete ? (
+                <div className="flex items-center gap-1.5 bg-rose-950/80 border border-rose-800/80 rounded-xl px-2.5 py-1">
+                  <span className="text-xs text-rose-200 font-medium">Biztosan törlöd?</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onDeleteShift(existingShift.id);
+                      onClose();
+                    }}
+                    className="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition cursor-pointer"
+                  >
+                    Igen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsConfirmingDelete(false)}
+                    className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                  >
+                    Mégse
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmingDelete(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-rose-400 hover:bg-rose-950/40 text-xs font-semibold transition cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Műszak törlése
+                </button>
+              )
             ) : <div />}
 
             <div className="flex items-center gap-2">
