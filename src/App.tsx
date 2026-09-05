@@ -258,8 +258,16 @@ export default function App() {
       familyId,
       (incoming) => {
         if (incoming.success && incoming.updatedAt && incoming.updatedAt > lastServerTimestamp) {
-          setEvents(incoming.events || []);
-          setShifts(incoming.shifts || []);
+          const freshEvents = (incoming.events || []).filter(
+            (e) => !deletedEventIdsRef.current.has(e.id)
+          );
+          const freshShifts = (incoming.shifts || []).filter(
+            (s) => !deletedShiftIdsRef.current.has(s.id)
+          );
+          setEvents(freshEvents);
+          setShifts(freshShifts);
+          saveEventsToStorage(freshEvents);
+          saveShiftsToStorage(freshShifts);
           if (incoming.memberNames && Object.keys(incoming.memberNames).length > 0) {
             setMemberNames(incoming.memberNames);
             saveMemberNamesToStorage(incoming.memberNames);
@@ -280,8 +288,16 @@ export default function App() {
         try {
           const res = await fetchFamilyData(familyId);
           if (res.success && res.updatedAt && res.updatedAt > lastServerTimestamp) {
-            setEvents(res.events || []);
-            setShifts(res.shifts || []);
+            const freshEvents = (res.events || []).filter(
+              (e) => !deletedEventIdsRef.current.has(e.id)
+            );
+            const freshShifts = (res.shifts || []).filter(
+              (s) => !deletedShiftIdsRef.current.has(s.id)
+            );
+            setEvents(freshEvents);
+            setShifts(freshShifts);
+            saveEventsToStorage(freshEvents);
+            saveShiftsToStorage(freshShifts);
             if (res.memberNames) {
               setMemberNames(res.memberNames);
               saveMemberNamesToStorage(res.memberNames);
@@ -515,15 +531,21 @@ export default function App() {
 
   const handleDeleteEvent = (eventId: string) => {
     deletedEventIdsRef.current.add(eventId);
-    setEvents((prev) => prev.filter((e) => e.id !== eventId));
+    setEvents((prev) => {
+      const updated = prev.filter((e) => e.id !== eventId);
+      saveEventsToStorage(updated);
+      return updated;
+    });
   };
 
   const handleToggleEventCompleted = (eventId: string) => {
-    setEvents((prev) =>
-      prev.map((e) =>
+    setEvents((prev) => {
+      const updated = prev.map((e) =>
         e.id === eventId ? { ...e, isCompleted: !e.isCompleted } : e
-      )
-    );
+      );
+      saveEventsToStorage(updated);
+      return updated;
+    });
   };
 
   // Handlers for Shifts
@@ -536,20 +558,32 @@ export default function App() {
   const handleSaveShift = (newShift: ParentShift) => {
     setShifts((prev) => {
       const filtered = prev.filter((s) => s.id !== newShift.id);
-      return [...filtered, newShift];
+      const updated = [...filtered, newShift];
+      saveShiftsToStorage(updated);
+      return updated;
     });
   };
 
   const handleDeleteShift = (shiftId: string) => {
     deletedShiftIdsRef.current.add(shiftId);
-    setShifts((prev) => prev.filter((s) => s.id !== shiftId));
+    setShifts((prev) => {
+      const updated = prev.filter((s) => s.id !== shiftId);
+      saveShiftsToStorage(updated);
+      return updated;
+    });
   };
 
-  const handleBatchApplyShifts = (newShifts: ParentShift[]) => {
+  const handleBatchApplyShifts = (newShifts: ParentShift[], removeShiftIds?: string[]) => {
+    if (removeShiftIds && removeShiftIds.length > 0) {
+      removeShiftIds.forEach((id) => deletedShiftIdsRef.current.add(id));
+    }
     setShifts((prev) => {
       const idsToReplace = new Set(newShifts.map((s) => s.id));
-      const remaining = prev.filter((s) => !idsToReplace.has(s.id));
-      return [...remaining, ...newShifts];
+      const idsToRemove = new Set(removeShiftIds || []);
+      const remaining = prev.filter((s) => !idsToReplace.has(s.id) && !idsToRemove.has(s.id));
+      const updated = [...remaining, ...newShifts];
+      saveShiftsToStorage(updated);
+      return updated;
     });
   };
 

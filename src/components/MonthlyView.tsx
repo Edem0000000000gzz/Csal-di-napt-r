@@ -54,7 +54,6 @@ export const MonthlyView: React.FC<MonthlyViewProps> = ({
   onToggleEventCompleted,
 }) => {
   const [dayDetailsModalIso, setDayDetailsModalIso] = useState<string | null>(null);
-  const [confirmDeleteEventId, setConfirmDeleteEventId] = useState<string | null>(null);
   const year = currentDate.getFullYear();
   const monthIndex = currentDate.getMonth();
 
@@ -191,6 +190,7 @@ export const MonthlyView: React.FC<MonthlyViewProps> = ({
 
             const hasApaShift = apaShift && !apaShift.isOffDay;
             const hasAnyaShift = anyaShift && !anyaShift.isOffDay;
+            const isWeekend = cell.date.getDay() === 0 || cell.date.getDay() === 6;
 
             // All family events on this day
             const dayEvents = events.filter((e) => e.date === cell.iso);
@@ -244,7 +244,7 @@ export const MonthlyView: React.FC<MonthlyViewProps> = ({
 
                   {/* Parental Shifts Mini Badges */}
                   <div className="mt-1 space-y-0.5">
-                    {hasApaShift && (
+                    {!isWeekend && hasApaShift && (
                       <div
                         className="flex items-center gap-0.5 text-[8px] sm:text-[9px] px-1 py-0.2 sm:py-0.5 rounded font-bold bg-sky-950 text-sky-200 border border-sky-800/70 truncate shadow-2xs"
                         title={`${getMemberName('apa', memberNames) || 'Apa'} munkaidő: ${apaShift.startTime || '07:00'} - ${apaShift.endTime || '15:00'}${apaShift.note ? ` (${apaShift.note})` : ''}`}
@@ -255,7 +255,7 @@ export const MonthlyView: React.FC<MonthlyViewProps> = ({
                         </span>
                       </div>
                     )}
-                    {apaShift && apaShift.isOffDay && (
+                    {!isWeekend && apaShift && apaShift.isOffDay && (
                       <div
                         className="flex items-center gap-0.5 text-[8px] sm:text-[9px] px-1 py-0.2 sm:py-0.5 rounded font-semibold bg-slate-800 text-sky-300 border border-slate-700 truncate shadow-2xs"
                         title={`${getMemberName('apa', memberNames) || 'Apa'}: Szabadnap / Pihenő`}
@@ -567,37 +567,15 @@ export const MonthlyView: React.FC<MonthlyViewProps> = ({
                             </button>
 
                             {onDeleteEvent && (
-                              confirmDeleteEventId === ev.id ? (
-                                <div className="flex items-center gap-1.5 bg-rose-950/80 border border-rose-800/80 rounded-xl px-2 py-1">
-                                  <span className="text-[11px] text-rose-200 font-medium">Biztosan törlöd?</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      onDeleteEvent(ev.id);
-                                      setConfirmDeleteEventId(null);
-                                    }}
-                                    className="px-2 py-0.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition cursor-pointer"
-                                  >
-                                    Igen, törlés
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setConfirmDeleteEventId(null)}
-                                    className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-semibold transition cursor-pointer"
-                                  >
-                                    Mégse
-                                  </button>
-                                </div>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => setConfirmDeleteEventId(ev.id)}
-                                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border border-slate-700 hover:border-rose-900 transition cursor-pointer"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                  <span>Törlés</span>
-                                </button>
-                              )
+                              <button
+                                type="button"
+                                onClick={() => onDeleteEvent(ev.id)}
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-rose-950/50 hover:bg-rose-900/80 text-rose-300 hover:text-rose-100 border border-rose-800/60 transition cursor-pointer active:scale-95"
+                                title="Tevékenység törlése"
+                              >
+                                <Trash2 className="w-3 h-3 text-rose-400" />
+                                <span>Törlés</span>
+                              </button>
                             )}
                           </div>
                         </div>
@@ -609,47 +587,19 @@ export const MonthlyView: React.FC<MonthlyViewProps> = ({
             </div>
 
             {/* Modal Footer with Actions */}
-            <div className="p-3.5 sm:p-4 border-t border-slate-800 bg-slate-850 flex flex-wrap items-center justify-between gap-2 shrink-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const date = dayDetailsModalIso;
-                    setDayDetailsModalIso(null);
-                    onOpenEventModal(date);
-                  }}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold shadow-md shadow-indigo-600/30 transition cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>+ Új esemény</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    const date = dayDetailsModalIso;
-                    setDayDetailsModalIso(null);
-                    onOpenShiftModal(date, 'apa');
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-950 hover:bg-sky-900 text-sky-200 text-xs sm:text-sm font-semibold border border-sky-800/80 transition cursor-pointer"
-                >
-                  <Briefcase className="w-3.5 h-3.5 text-sky-400" />
-                  <span>Apa munkaidő</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    const date = dayDetailsModalIso;
-                    setDayDetailsModalIso(null);
-                    onOpenShiftModal(date, 'anya');
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-950 hover:bg-rose-900 text-rose-200 text-xs sm:text-sm font-semibold border border-rose-800/80 transition cursor-pointer"
-                >
-                  <Briefcase className="w-3.5 h-3.5 text-rose-400" />
-                  <span>Anya munkaidő</span>
-                </button>
-              </div>
+            <div className="p-3.5 sm:p-4 border-t border-slate-800 bg-slate-850 flex items-center justify-between gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  const date = dayDetailsModalIso;
+                  setDayDetailsModalIso(null);
+                  onOpenEventModal(date);
+                }}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold shadow-md shadow-indigo-600/30 transition cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Új esemény</span>
+              </button>
 
               <button
                 type="button"

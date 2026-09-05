@@ -11,7 +11,7 @@ interface ShiftModalProps {
   currentShifts: ParentShift[];
   onSaveShift: (shift: ParentShift) => void;
   onDeleteShift?: (shiftId: string) => void;
-  onBatchApplyShifts?: (newShifts: ParentShift[]) => void;
+  onBatchApplyShifts?: (newShifts: ParentShift[], removeShiftIds?: string[]) => void;
   memberNames?: Record<string, string>;
   initialParent?: 'apa' | 'anya';
 }
@@ -35,7 +35,6 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
   const [isOffDay, setIsOffDay] = useState<boolean>(false);
   const [note, setNote] = useState<string>('');
   const [isManualEdit, setIsManualEdit] = useState<boolean>(false);
-  const [isConfirmingDelete, setIsConfirmingDelete] = useState<boolean>(false);
 
   const apaName = getMemberName('apa', memberNames, true);
   const anyaName = getMemberName('anya', memberNames, true);
@@ -48,7 +47,6 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
       if (initialParent) {
         setSelectedParent(initialParent);
       }
-      setIsConfirmingDelete(false);
     }
   }, [isOpen, initialParent]);
 
@@ -144,30 +142,42 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     const monday = new Date(base.setDate(mondayDiff));
 
     const newShifts: ParentShift[] = [];
+    const removeShiftIds: string[] = [];
     const isApa = parent === 'apa';
     const standardStart = isApa ? '07:00' : '06:00';
     const standardEnd = isApa ? '15:00' : '18:00';
     const shiftLabel = isApa ? '07:00 - 15:00' : '06:00 - 18:00';
 
-    for (let i = 0; i < 7; i++) {
+    // Hétfőtől Péntekig (0-4): Kizárólag hétköznapokra tölti ki a munkaidőt
+    for (let i = 0; i < 5; i++) {
       const cur = new Date(monday);
       cur.setDate(monday.getDate() + i);
       const iso = formatIsoDate(cur);
-      const isWeekend = i >= 5;
 
       newShifts.push({
         id: `${parent}-${iso}`,
         memberId: parent,
         date: iso,
-        shiftType: isWeekend ? 'Szabadnap' : shiftLabel,
-        startTime: isWeekend ? undefined : standardStart,
-        endTime: isWeekend ? undefined : standardEnd,
-        isOffDay: isWeekend,
-        note: isWeekend ? 'Hétvégi pihenő' : 'Munkanap',
+        shiftType: shiftLabel,
+        startTime: standardStart,
+        endTime: standardEnd,
+        isOffDay: false,
+        note: 'Munkanap',
       });
     }
 
-    onBatchApplyShifts(newShifts);
+    // Hétvége (Szombat i=5, Vasárnap i=6): Pihenőidő, nem munkanap!
+    // A korábban esetleg tévesen rögzített hétvégi műszakokat eltávolítjuk
+    for (let i = 5; i < 7; i++) {
+      const cur = new Date(monday);
+      cur.setDate(monday.getDate() + i);
+      const iso = formatIsoDate(cur);
+      removeShiftIds.push(`${parent}-${iso}`);
+      const existing = currentShifts.find((s) => s.date === iso && s.memberId === parent);
+      if (existing) removeShiftIds.push(existing.id);
+    }
+
+    onBatchApplyShifts(newShifts, removeShiftIds);
     onClose();
   };
 
@@ -375,37 +385,18 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
           {/* Actions */}
           <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-3">
             {existingShift && onDeleteShift ? (
-              isConfirmingDelete ? (
-                <div className="flex items-center gap-1.5 bg-rose-950/80 border border-rose-800/80 rounded-xl px-2.5 py-1">
-                  <span className="text-xs text-rose-200 font-medium">Biztosan törlöd?</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onDeleteShift(existingShift.id);
-                      onClose();
-                    }}
-                    className="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition cursor-pointer"
-                  >
-                    Igen
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsConfirmingDelete(false)}
-                    className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
-                  >
-                    Mégse
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setIsConfirmingDelete(true)}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-rose-400 hover:bg-rose-950/40 text-xs font-semibold transition cursor-pointer"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Műszak törlése
-                </button>
-              )
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteShift(existingShift.id);
+                  onClose();
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-950/50 hover:bg-rose-900/80 text-rose-300 hover:text-rose-100 border border-rose-800/60 text-xs font-semibold transition cursor-pointer active:scale-95"
+                title="Műszak törlése"
+              >
+                <Trash2 className="w-4 h-4 text-rose-400" />
+                <span>Műszak törlése</span>
+              </button>
             ) : <div />}
 
             <div className="flex items-center gap-2">
