@@ -1,0 +1,6 @@
+{
+  "name": "Családi Naptár & Beosztás",
+  "description": "Közös családi naptár és munkaidő-nyilvántartó heti és havi nézettel, privát családi meghívó linkkel, szülői munkaidővel és PDF exporttal.",
+  "requestFramePermissions": ["notification"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
