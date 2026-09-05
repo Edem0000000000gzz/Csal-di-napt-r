@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ParentShift } from '../types';
 import { APA_SHIFT_PRESETS, ANYA_SHIFT_PRESETS, formatIsoDate, getMemberName, getMemberInitial } from '../data/defaultData';
 import { formatToHungarianDate } from '../utils/dateUtils';
-import { Clock, Briefcase, Calendar, X, Check, Trash2, Wand2, ShieldAlert } from 'lucide-react';
+import { Clock, Briefcase, Calendar, X, Check, Trash2, Wand2, ShieldAlert, Edit3 } from 'lucide-react';
 
 interface ShiftModalProps {
   isOpen: boolean;
@@ -57,8 +57,23 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
     }
   }, [selectedDate]);
 
-  // Synchronize hours and presets whenever parent, date or shifts change
+  // Track initialization key so user edits aren't wiped out by external syncs
+  const lastInitKeyRef = React.useRef<string>('');
+
+  // Synchronize hours and presets whenever parent, date or modal open state changes
   React.useEffect(() => {
+    if (!isOpen) {
+      lastInitKeyRef.current = '';
+      return;
+    }
+
+    const currentKey = `${selectedParent}-${date}`;
+    // Only re-init if the parent or date has changed or modal just opened
+    if (lastInitKeyRef.current === currentKey) {
+      return;
+    }
+    lastInitKeyRef.current = currentKey;
+
     const currentPresets = selectedParent === 'apa' ? APA_SHIFT_PRESETS : ANYA_SHIFT_PRESETS;
     const existing = currentShifts.find((s) => s.date === date && s.memberId === selectedParent);
 
@@ -93,7 +108,7 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
       setNote('');
       setIsManualEdit(false);
     }
-  }, [selectedParent, date, currentShifts]);
+  }, [isOpen, selectedParent, date, currentShifts]);
 
   if (!isOpen) return null;
 
@@ -263,37 +278,96 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
             </p>
           </div>
 
-          {/* Dropdown Presets */}
+          {/* Dropdown Presets vs Manual Mode */}
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-slate-400" />
-                Előre beállított munkaidő
+                Munkaidő megadása
               </span>
+            </div>
+
+            {/* Prominent Tab Switcher (Touch friendly, no label nesting) */}
+            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-800 rounded-2xl border border-slate-700/80 mb-3">
               <button
                 type="button"
-                onClick={() => setIsManualEdit(!isManualEdit)}
-                className="text-[11px] text-indigo-400 font-semibold hover:underline cursor-pointer"
+                id="shift-mode-presets-btn"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsManualEdit(false);
+                }}
+                className={`py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer min-h-[42px] ${
+                  !isManualEdit
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-750'
+                }`}
               >
-                {isManualEdit ? 'Váltás sablonra' : 'Manuális munkaidő megadása'}
+                <Clock className="w-3.5 h-3.5 shrink-0" />
+                <span>Előre beállított sablon</span>
               </button>
-            </label>
+
+              <button
+                type="button"
+                id="shift-mode-manual-btn"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsManualEdit(true);
+                }}
+                className={`py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer min-h-[42px] ${
+                  isManualEdit
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-750'
+                }`}
+              >
+                <Edit3 className="w-3.5 h-3.5 shrink-0" />
+                <span>Manuális munkaidő</span>
+              </button>
+            </div>
 
             {!isManualEdit ? (
-              <select
-                value={presetIndex}
-                onChange={(e) => handlePresetChange(Number(e.target.value))}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-700 bg-slate-800 text-white font-medium text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-hidden cursor-pointer"
-              >
-                {presets.map((preset, idx) => (
-                  <option key={idx} value={idx}>
-                    {preset.label}
-                  </option>
-                ))}
-              </select>
+              <div className="space-y-2">
+                <select
+                  value={presetIndex}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === 'manual') {
+                      setIsManualEdit(true);
+                    } else {
+                      handlePresetChange(Number(val));
+                    }
+                  }}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-700 bg-slate-800 text-white font-medium text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-hidden cursor-pointer"
+                >
+                  {presets.map((preset, idx) => (
+                    <option key={idx} value={idx}>
+                      {preset.label}
+                    </option>
+                  ))}
+                  <option value="manual">✏️ Manuális munkaidő megadása (kézi beírás)...</option>
+                </select>
+
+                <div className="p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/60 flex items-center justify-between text-xs text-slate-300">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                    <span>Kiválasztott munkaidő:</span>
+                    <strong className="text-white font-bold">
+                      {isOffDay ? 'Szabadnap' : `${startTime} - ${endTime}`}
+                    </strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsManualEdit(true)}
+                    className="text-xs text-indigo-400 hover:underline font-semibold cursor-pointer"
+                  >
+                    Kézi pontosítás &rarr;
+                  </button>
+                </div>
+              </div>
             ) : (
               <div className="p-3.5 bg-slate-800/90 border border-slate-700 rounded-2xl space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between p-2 rounded-xl bg-slate-850 border border-slate-750">
                   <span className="text-xs font-semibold text-slate-200">
                     Szabadnap / Nem dolgozik:
                   </span>
@@ -309,32 +383,67 @@ export const ShiftModal: React.FC<ShiftModalProps> = ({
                 </div>
 
                 {!isOffDay && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <span className="block text-[11px] font-semibold text-slate-400 mb-1">
-                        Munkaidő kezdete
-                      </span>
-                      <input
-                        type="time"
-                        value={startTime}
-                        onChange={(e) => setStartTime(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-700 bg-slate-900 text-white text-sm"
-                        required={!isOffDay}
-                      />
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <span className="block text-[11px] font-semibold text-slate-400 mb-1">
+                          Munkaidő kezdete
+                        </span>
+                        <input
+                          type="time"
+                          value={startTime}
+                          onChange={(e) => setStartTime(e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl border border-slate-700 bg-slate-900 text-white text-sm"
+                          required={!isOffDay}
+                        />
+                      </div>
+                      <div>
+                        <span className="block text-[11px] font-semibold text-slate-400 mb-1">
+                          Munkaidő vége
+                        </span>
+                        <input
+                          type="time"
+                          value={endTime}
+                          onChange={(e) => setEndTime(e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl border border-slate-700 bg-slate-900 text-white text-sm"
+                          required={!isOffDay}
+                        />
+                      </div>
                     </div>
+
+                    {/* Quick hour helpers */}
                     <div>
-                      <span className="block text-[11px] font-semibold text-slate-400 mb-1">
-                        Munkaidő vége
+                      <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                        Gyors időpont választás:
                       </span>
-                      <input
-                        type="time"
-                        value={endTime}
-                        onChange={(e) => setEndTime(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-700 bg-slate-900 text-white text-sm"
-                        required={!isOffDay}
-                      />
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          { start: '07:00', end: '15:00', label: '07:00 - 15:00' },
+                          { start: '06:00', end: '18:00', label: '06:00 - 18:00' },
+                          { start: '06:00', end: '14:00', label: '06:00 - 14:00' },
+                          { start: '14:00', end: '22:00', label: '14:00 - 22:00' },
+                          { start: '18:00', end: '06:00', label: '18:00 - 06:00' },
+                          { start: '08:00', end: '16:30', label: '08:00 - 16:30' },
+                        ].map((q) => (
+                          <button
+                            key={q.label}
+                            type="button"
+                            onClick={() => {
+                              setStartTime(q.start);
+                              setEndTime(q.end);
+                            }}
+                            className={`px-2 py-1 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                              startTime === q.start && endTime === q.end
+                                ? 'bg-indigo-600 text-white border-indigo-500 shadow-xs'
+                                : 'bg-slate-900 text-slate-300 border-slate-750 hover:bg-slate-750'
+                            }`}
+                          >
+                            {q.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  </>
                 )}
               </div>
             )}

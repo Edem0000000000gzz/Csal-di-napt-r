@@ -804,6 +804,11 @@ export default function App() {
         memberNames={memberNames}
         onSaveEvent={handleSaveEvent}
         onDeleteEvent={handleDeleteEvent}
+        onSaveShift={handleSaveShift}
+        onOpenShiftModal={(date, parent) => {
+          setIsEventModalOpen(false);
+          handleOpenShiftModal(date, parent);
+        }}
       />
 
       <ShiftModal
