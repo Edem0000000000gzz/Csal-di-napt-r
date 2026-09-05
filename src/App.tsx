@@ -67,6 +67,7 @@ import {
   Calendar,
   Table as TableIcon,
   RefreshCw,
+  Wand2,
 } from 'lucide-react';
 
 export default function App() {
@@ -125,6 +126,7 @@ export default function App() {
   const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
   const [selectedShiftDate, setSelectedShiftDate] = useState<string>(getTodayIso());
   const [initialShiftParent, setInitialShiftParent] = useState<'apa' | 'anya' | undefined>(undefined);
+  const [initialShiftMode, setInitialShiftMode] = useState<'day' | 'week'>('day');
 
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [isReminderCenterOpen, setIsReminderCenterOpen] = useState(false);
@@ -523,21 +525,26 @@ export default function App() {
   };
 
   const handleSaveEvent = (savedEvent: CalendarEvent) => {
+    deletedEventIdsRef.current.delete(savedEvent.id);
     setEvents((prev) => {
       const exists = prev.some((e) => e.id === savedEvent.id);
-      if (exists) {
-        return prev.map((e) => (e.id === savedEvent.id ? savedEvent : e));
-      }
-      return [savedEvent, ...prev];
+      const updated = exists
+        ? prev.map((e) => (e.id === savedEvent.id ? savedEvent : e))
+        : [savedEvent, ...prev];
+      saveEventsToStorage(updated);
+      return updated;
     });
   };
 
   const handleSaveBatchEvents = (savedEvents: CalendarEvent[]) => {
     if (!savedEvents || savedEvents.length === 0) return;
+    savedEvents.forEach((e) => deletedEventIdsRef.current.delete(e.id));
     setEvents((prev) => {
       const ids = new Set(savedEvents.map((e) => e.id));
       const rest = prev.filter((e) => !ids.has(e.id));
-      return [...savedEvents, ...rest];
+      const updated = [...savedEvents, ...rest];
+      saveEventsToStorage(updated);
+      return updated;
     });
   };
 
@@ -561,13 +568,19 @@ export default function App() {
   };
 
   // Handlers for Shifts
-  const handleOpenShiftModal = (date?: string, parent?: 'apa' | 'anya') => {
+  const handleOpenShiftModal = (
+    date?: string,
+    parent?: 'apa' | 'anya',
+    mode: 'day' | 'week' = 'day'
+  ) => {
     setSelectedShiftDate(date || getTodayIso());
     setInitialShiftParent(parent);
+    setInitialShiftMode(mode);
     setIsShiftModalOpen(true);
   };
 
   const handleSaveShift = (newShift: ParentShift) => {
+    deletedShiftIdsRef.current.delete(newShift.id);
     setShifts((prev) => {
       const filtered = prev.filter((s) => s.id !== newShift.id);
       const updated = [...filtered, newShift];
@@ -586,9 +599,14 @@ export default function App() {
   };
 
   const handleBatchApplyShifts = (newShifts: ParentShift[], removeShiftIds?: string[]) => {
+    // 1. Unmark newly applied shifts from deleted cache so Firestore won't purge them
+    newShifts.forEach((s) => deletedShiftIdsRef.current.delete(s.id));
+
+    // 2. Track real removals
     if (removeShiftIds && removeShiftIds.length > 0) {
       removeShiftIds.forEach((id) => deletedShiftIdsRef.current.add(id));
     }
+
     setShifts((prev) => {
       const idsToReplace = new Set(newShifts.map((s) => s.id));
       const idsToRemove = new Set(removeShiftIds || []);
@@ -674,12 +692,20 @@ export default function App() {
           {/* Action buttons */}
           <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => handleOpenShiftModal()}
+              onClick={() => handleOpenShiftModal(undefined, undefined, 'week')}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 border border-amber-500/50 font-bold text-xs sm:text-sm transition cursor-pointer shadow-xs active:scale-95"
+              title="Szülői munkaidő gyors heti kitöltése (Apa: 07-15, Anya: 06-18 mindkettőjüknek)"
+            >
+              <Wand2 className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="whitespace-nowrap">⚡ Heti gyorskitöltés</span>
+            </button>
+            <button
+              onClick={() => handleOpenShiftModal(undefined, undefined, 'day')}
               className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-indigo-300 hover:text-indigo-200 border border-indigo-900/60 font-semibold text-xs sm:text-sm transition cursor-pointer shadow-xs"
-              title="Szülői munkaidő gyors kitöltése heti vagy havi szinten"
+              title="Egy adott napi szülői munkaidő beállítása"
             >
               <Briefcase className="w-4 h-4 text-indigo-400 shrink-0" />
-              <span className="whitespace-nowrap">Munkaidő kitöltése</span>
+              <span className="whitespace-nowrap">Napi munkaidő</span>
             </button>
             <button
               onClick={() => handleOpenNewEventModal()}
@@ -833,9 +859,11 @@ export default function App() {
         onClose={() => {
           setIsShiftModalOpen(false);
           setInitialShiftParent(undefined);
+          setInitialShiftMode('day');
         }}
         selectedDate={selectedShiftDate}
         initialParent={initialShiftParent}
+        initialMode={initialShiftMode}
         currentShifts={shifts}
         memberNames={memberNames}
         onSaveShift={handleSaveShift}

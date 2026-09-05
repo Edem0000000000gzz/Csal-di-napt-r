@@ -23,6 +23,7 @@ import {
   Trash2,
   FileText,
   Users,
+  Wand2,
 } from 'lucide-react';
 
 interface MonthlyViewProps {
@@ -35,7 +36,7 @@ interface MonthlyViewProps {
   memberNames?: Record<string, string>;
   onUpdateMemberName?: (memberId: FamilyMemberId | string, newName: string) => void;
   onOpenEventModal: (date: string, event?: CalendarEvent, memberId?: FamilyMemberId) => void;
-  onOpenShiftModal: (date: string, parent?: 'apa' | 'anya') => void;
+  onOpenShiftModal: (date: string, parent?: 'apa' | 'anya', mode?: 'day' | 'week') => void;
   onDeleteEvent?: (eventId: string) => void;
   onToggleEventCompleted?: (eventId: string) => void;
 }
@@ -645,19 +646,35 @@ export const MonthlyView: React.FC<MonthlyViewProps> = ({
             </div>
 
             {/* Modal Footer with Actions */}
-            <div className="p-3.5 sm:p-4 border-t border-slate-800 bg-slate-850 flex items-center justify-between gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  const date = dayDetailsModalIso;
-                  setDayDetailsModalIso(null);
-                  onOpenEventModal(date);
-                }}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold shadow-md shadow-indigo-600/30 transition cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>+ Új esemény</span>
-              </button>
+            <div className="p-3.5 sm:p-4 border-t border-slate-800 bg-slate-850 flex flex-wrap items-center justify-between gap-2 shrink-0">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const date = dayDetailsModalIso;
+                    setDayDetailsModalIso(null);
+                    onOpenEventModal(date);
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold shadow-md shadow-indigo-600/30 transition cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ Új esemény</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const date = dayDetailsModalIso;
+                    setDayDetailsModalIso(null);
+                    onOpenShiftModal(date, undefined, 'week');
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 text-xs font-bold transition cursor-pointer shadow-xs active:scale-95"
+                  title="Ezen hét szülői munkaidejének gyors kitöltése"
+                >
+                  <Wand2 className="w-3.5 h-3.5 text-amber-400" />
+                  <span>⚡ Hét gyorskitöltése</span>
+                </button>
+              </div>
 
               <button
                 type="button"

@@ -10,7 +10,7 @@ import {
   getMemberName,
   getMemberInitial,
 } from '../data/defaultData';
-import { formatToHungarianDate } from '../utils/dateUtils';
+import { formatToHungarianDate, getMondayOfCurrentWeek, getWeekDays, parseIsoDate } from '../utils/dateUtils';
 import {
   X,
   Check,
@@ -70,6 +70,7 @@ export const EventModal: React.FC<EventModalProps> = ({
   const [reminder, setReminder] = useState<ReminderTime>('none');
   const [customReminderDateTime, setCustomReminderDateTime] = useState('');
   const [syncToParentShift, setSyncToParentShift] = useState(true);
+  const [repeatWeekdays, setRepeatWeekdays] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
 
   const apaName = getMemberName('apa', memberNames, true);
@@ -79,6 +80,7 @@ export const EventModal: React.FC<EventModalProps> = ({
 
   React.useEffect(() => {
     setFeedbackMsg(null);
+    setRepeatWeekdays(false);
     if (editEvent) {
       const isWork = editEvent.category === 'work';
       setEntryType(isWork ? 'workday' : 'event');
@@ -142,7 +144,80 @@ export const EventModal: React.FC<EventModalProps> = ({
   const handleSaveInternal = (keepOpenForNext: boolean) => {
     const finalTitle = title.trim() || (entryType === 'workday' ? (isAllDay ? 'Pihenőnap' : 'Munkanap') : 'Esemény');
 
-    // Case 1: Apply to ALL 5 family members at once
+    // Case 0: Weekly repetition for weekdays (Monday to Friday)
+    if (repeatWeekdays && !editEvent) {
+      const monday = getMondayOfCurrentWeek(parseIsoDate(date));
+      const weekDays = getWeekDays(monday);
+      const weekdayIsos = [weekDays[0].iso, weekDays[1].iso, weekDays[2].iso, weekDays[3].iso, weekDays[4].iso];
+      const targetMembers: FamilyMemberId[] =
+        memberMode === 'all5' && entryType !== 'workday'
+          ? ['apa', 'anya', 'amira', 'donat', 'hella']
+          : [memberId];
+
+      const baseTime = Date.now();
+      const eventsToSave: CalendarEvent[] = [];
+
+      weekdayIsos.forEach((wIso, dayIdx) => {
+        targetMembers.forEach((mId, memIdx) => {
+          eventsToSave.push({
+            id: `ev-${baseTime}-${dayIdx}-${memIdx}-${mId}`,
+            title: finalTitle,
+            memberId: mId,
+            category: entryType === 'workday' ? 'work' : category,
+            date: wIso,
+            startTime: isAllDay ? undefined : startTime,
+            endTime: isAllDay ? undefined : endTime,
+            isAllDay,
+            location: location.trim() || undefined,
+            notes: notes.trim() || undefined,
+            reminder,
+            customReminderDateTime: reminder === 'custom' ? customReminderDateTime : undefined,
+            createdAt: baseTime,
+            updatedAt: baseTime,
+            isCompleted: false,
+          });
+
+          if (
+            (entryType === 'workday' || category === 'work' || syncToParentShift) &&
+            (mId === 'apa' || mId === 'anya') &&
+            onSaveShift
+          ) {
+            onSaveShift({
+              id: `${mId}-${wIso}`,
+              memberId: mId,
+              date: wIso,
+              shiftType: isAllDay ? 'Szabadnap' : `${startTime} - ${endTime}`,
+              startTime: isAllDay ? undefined : startTime,
+              endTime: isAllDay ? undefined : endTime,
+              isOffDay: isAllDay,
+              note: finalTitle,
+              updatedAt: baseTime,
+            });
+          }
+        });
+      });
+
+      if (onSaveBatchEvents) {
+        onSaveBatchEvents(eventsToSave);
+      } else {
+        eventsToSave.forEach((ev) => onSaveEvent(ev));
+      }
+
+      if (keepOpenForNext) {
+        setTitle('');
+        setNotes('');
+        setLocation('');
+        setRepeatWeekdays(false);
+        setFeedbackMsg(`✅ Sikeresen rögzítve ${eventsToSave.length} esemény a hétköznapokra! Írhatod a következőt:`);
+        setTimeout(() => titleInputRef.current?.focus(), 50);
+        return;
+      } else {
+        onClose();
+        return;
+      }
+    }
+
+    // Case 1: Apply to ALL 5 family members at once (Single day)
     if (memberMode === 'all5' && !editEvent && entryType !== 'workday') {
       const fiveMembers: FamilyMemberId[] = ['apa', 'anya', 'amira', 'donat', 'hella'];
       const baseTime = Date.now();
@@ -591,6 +666,34 @@ export const EventModal: React.FC<EventModalProps> = ({
               </label>
             </div>
           </div>
+
+          {/* Quick Weekday Repetition */}
+          {!editEvent && (
+            <div className="p-2.5 rounded-xl bg-slate-800/90 border border-slate-700/80 flex items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-xs font-bold text-amber-300 block truncate">
+                    ⚡ Heti gyorskitöltés (Hétfő – Péntek)
+                  </span>
+                  <span className="text-[11px] text-slate-400 block truncate">
+                    Ezen a héten mind az 5 munkanapra/iskolanapra rögzíti
+                  </span>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  checked={repeatWeekdays}
+                  onChange={(e) => setRepeatWeekdays(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-slate-700 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-700 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
+              </label>
+            </div>
+          )}
 
           {!isAllDay && (
             <div className="grid grid-cols-2 gap-3">

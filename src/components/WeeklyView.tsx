@@ -14,6 +14,7 @@ import {
   Circle,
   Calendar,
   Sparkles,
+  Wand2,
 } from 'lucide-react';
 
 interface WeeklyViewProps {
@@ -24,7 +25,7 @@ interface WeeklyViewProps {
   shifts: ParentShift[];
   selectedMember: FamilyMemberId;
   onOpenEventModal: (date: string, event?: CalendarEvent) => void;
-  onOpenShiftModal: (date: string, parent?: 'apa' | 'anya') => void;
+  onOpenShiftModal: (date: string, parent?: 'apa' | 'anya', mode?: 'day' | 'week') => void;
   onToggleEventCompleted: (eventId: string) => void;
   memberNames?: Record<string, string>;
 }
@@ -78,6 +79,14 @@ export const WeeklyView: React.FC<WeeklyViewProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 ml-auto">
+          <button
+            onClick={() => onOpenShiftModal(weekDays[0].iso, undefined, 'week')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 text-xs font-bold transition cursor-pointer shadow-xs active:scale-95"
+            title="A látható hét gyorskitöltése szülői munkaidővel"
+          >
+            <Wand2 className="w-3.5 h-3.5 text-amber-400" />
+            <span>⚡ Heti gyorskitöltés</span>
+          </button>
           {!isCurrentWeek && (
             <button
               onClick={onJumpToToday}
