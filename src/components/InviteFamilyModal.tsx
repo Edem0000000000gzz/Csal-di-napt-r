@@ -102,24 +102,41 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
   };
 
   useEffect(() => {
-    if (!inviteLink) {
-      setQrImageUrl('');
+    if (!inviteLink || !showQr) {
       return;
     }
-    QRCode.toDataURL(inviteLink, {
-      width: 260,
-      margin: 2,
-      color: {
-        dark: '#ffffff',
-        light: '#0f172a',
-      },
-    })
-      .then((url) => setQrImageUrl(url))
-      .catch((err) => {
-        console.error('Failed to generate local QR code', err);
-        setQrImageUrl('');
-      });
-  }, [inviteLink]);
+    const fallbackUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=10&data=${encodeURIComponent(
+      inviteLink
+    )}`;
+
+    try {
+      if (QRCode && typeof QRCode.toDataURL === 'function') {
+        QRCode.toDataURL(
+          inviteLink,
+          {
+            width: 260,
+            margin: 2,
+            color: {
+              dark: '#ffffff',
+              light: '#0f172a',
+            },
+          },
+          (err: any, url: string) => {
+            if (!err && url) {
+              setQrImageUrl(url);
+            } else {
+              setQrImageUrl(fallbackUrl);
+            }
+          }
+        );
+      } else {
+        setQrImageUrl(fallbackUrl);
+      }
+    } catch (err) {
+      console.warn('Local QRCode generator encountered an issue, using fallback image', err);
+      setQrImageUrl(fallbackUrl);
+    }
+  }, [inviteLink, showQr]);
 
   const handleCopyLink = async () => {
     if (!inviteLink) return;
@@ -158,12 +175,19 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
 
   const handleRevokeAndRotateKey = async () => {
     if (!familyId) return;
-    const confirmRevoke = window.confirm(
-      'BIZTOSAN VISSZAVONOD A JELENLEGI MEGHÍVÓT ÉS KULCSOT?\n\n' +
-        '• Minden eddig megosztott link és kinyomtatott QR-kód AZONNAL érvénytelenné válik.\n' +
-        '• Külső személyek, akik korábban megszerezték a linket, többé nem férhetnek hozzá.\n' +
-        '• A családtagoknak át kell küldened az új linket vagy QR-kódot.'
-    );
+    let confirmRevoke = true;
+    try {
+      if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+        confirmRevoke = window.confirm(
+          'BIZTOSAN VISSZAVONOD A JELENLEGI MEGHÍVÓT ÉS KULCSOT?\n\n' +
+            '• Minden eddig megosztott link és kinyomtatott QR-kód AZONNAL érvénytelenné válik.\n' +
+            '• Külső személyek, akik korábban megszerezték a linket, többé nem férhetnek hozzá.\n' +
+            '• A családtagoknak át kell küldened az új linket vagy QR-kódot.'
+        );
+      }
+    } catch {
+      confirmRevoke = true;
+    }
     if (!confirmRevoke) return;
 
     setIsRotating(true);

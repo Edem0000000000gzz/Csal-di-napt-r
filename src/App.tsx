@@ -47,6 +47,7 @@ import { PdfExportModal } from './components/PdfExportModal';
 import { ReminderCenter } from './components/ReminderCenter';
 import { StoragePrivacyModal } from './components/StoragePrivacyModal';
 import { InviteFamilyModal } from './components/InviteFamilyModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import {
   WifiOff,
@@ -566,7 +567,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200 overflow-x-hidden w-full max-w-full">
       {/* Header */}
       <Header
         onOpenPdfModal={() => setIsPdfModalOpen(true)}
@@ -793,16 +794,18 @@ export default function App() {
         onImportData={handleImportCalendarData}
       />
 
-      <InviteFamilyModal
-        isOpen={isInviteModalOpen}
-        onClose={() => setIsInviteModalOpen(false)}
-        familyId={familyId}
-        onGenerateNewFamily={handleGenerateNewFamily}
-        onLeaveFamily={handleLeaveFamily}
-        onJoinFamily={handleJoinFamily}
-        eventsCount={events.length}
-        shiftsCount={shifts.length}
-      />
+      <ErrorBoundary fallbackTitle="Hiba történt a meghívó megnyitásakor">
+        <InviteFamilyModal
+          isOpen={isInviteModalOpen}
+          onClose={() => setIsInviteModalOpen(false)}
+          familyId={familyId}
+          onGenerateNewFamily={handleGenerateNewFamily}
+          onLeaveFamily={handleLeaveFamily}
+          onJoinFamily={handleJoinFamily}
+          eventsCount={events.length}
+          shiftsCount={shifts.length}
+        />
+      </ErrorBoundary>
     </div>
   );
 }

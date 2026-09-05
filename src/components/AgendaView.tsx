@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CalendarEvent, FamilyMemberId, EventCategory } from '../types';
-import { FAMILY_MEMBERS, CATEGORIES, getMemberName } from '../data/defaultData';
+import { FAMILY_MEMBERS, CATEGORIES, CATEGORIES_LIST, getMemberName } from '../data/defaultData';
 import { formatToHungarianDate } from '../utils/dateUtils';
 import {
   Clock,
@@ -91,7 +91,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
               className="px-3 py-2 rounded-xl border border-slate-700 bg-slate-800 text-slate-200 text-xs font-medium cursor-pointer"
             >
               <option value="all">Minden kategória</option>
-              {Object.values(CATEGORIES).map((c) => (
+              {CATEGORIES_LIST.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>

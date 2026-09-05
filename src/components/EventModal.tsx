@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CalendarEvent, EventCategory, FamilyMemberId, ReminderTime } from '../types';
-import { FAMILY_MEMBERS, CATEGORIES, formatIsoDate, getMemberName, getMemberInitial } from '../data/defaultData';
+import { FAMILY_MEMBERS, CATEGORIES, CATEGORIES_LIST, formatIsoDate, getMemberName, getMemberInitial } from '../data/defaultData';
 import { formatToHungarianDate } from '../utils/dateUtils';
 import {
   X,
@@ -209,7 +209,7 @@ export const EventModal: React.FC<EventModalProps> = ({
               Kategória (Típus szerinti színkód)
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {Object.values(CATEGORIES).map((cat) => {
+              {CATEGORIES_LIST.map((cat) => {
                 const isSelected = category === cat.id;
                 return (
                   <button

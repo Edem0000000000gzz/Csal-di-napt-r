@@ -68,7 +68,7 @@ export const FAMILY_MEMBERS: FamilyMember[] = [
   },
 ];
 
-const baseCategories: CategoryInfo[] = [
+export const CATEGORIES_LIST: CategoryInfo[] = [
   { id: 'family', name: 'Családi program', iconName: 'Heart', color: '#ec4899', badgeClass: 'bg-pink-900/50 text-pink-300 border-pink-700/40', borderClass: 'border-pink-500/30' },
   { id: 'work', name: 'Munka / Műszak', iconName: 'Briefcase', color: '#3b82f6', badgeClass: 'bg-blue-900/50 text-blue-300 border-blue-700/40', borderClass: 'border-blue-500/30' },
   { id: 'school', name: 'Iskola / Óvoda', iconName: 'GraduationCap', color: '#8b5cf6', badgeClass: 'bg-purple-900/50 text-purple-300 border-purple-700/40', borderClass: 'border-purple-500/30' },
@@ -78,13 +78,15 @@ const baseCategories: CategoryInfo[] = [
   { id: 'other', name: 'Egyéb', iconName: 'Calendar', color: '#64748b', badgeClass: 'bg-slate-800 text-slate-300 border-slate-700', borderClass: 'border-slate-600' },
 ];
 
-const catRecord: Record<string, CategoryInfo> = {};
-for (const c of baseCategories) {
-  catRecord[c.id] = c;
-}
-
-export type CategoryList = CategoryInfo[] & Record<string, CategoryInfo>;
-export const CATEGORIES: CategoryList = Object.assign([...baseCategories], catRecord);
+export const CATEGORIES: Record<string, CategoryInfo> = {
+  family: CATEGORIES_LIST[0],
+  work: CATEGORIES_LIST[1],
+  school: CATEGORIES_LIST[2],
+  activity: CATEGORIES_LIST[3],
+  health: CATEGORIES_LIST[4],
+  task: CATEGORIES_LIST[5],
+  other: CATEGORIES_LIST[6],
+};
 
 export const APA_SHIFT_PRESETS = [
   { label: 'Délelőtt (06:00 - 14:00)', startTime: '06:00', endTime: '14:00', isOffDay: false },
