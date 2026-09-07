@@ -660,20 +660,6 @@ export const MonthlyView: React.FC<MonthlyViewProps> = ({
                   <Plus className="w-4 h-4" />
                   <span>+ Új esemény</span>
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    const date = dayDetailsModalIso;
-                    setDayDetailsModalIso(null);
-                    onOpenShiftModal(date, undefined, 'week');
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 text-xs font-bold transition cursor-pointer shadow-xs active:scale-95"
-                  title="Ezen hét szülői munkaidejének gyors kitöltése"
-                >
-                  <Wand2 className="w-3.5 h-3.5 text-amber-400" />
-                  <span>⚡ Hét gyorskitöltése</span>
-                </button>
               </div>
 
               <button

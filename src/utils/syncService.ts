@@ -133,7 +133,7 @@ export function mergeEvents(local: CalendarEvent[], incoming: CalendarEvent[]): 
 }
 
 /**
- * Merges parent shifts cleanly by memberId and date.
+ * Merges parent shifts cleanly by memberId and date with timestamp comparison.
  */
 export function mergeShifts(local: ParentShift[], incoming: ParentShift[]): ParentShift[] {
   const map = new Map<string, ParentShift>();
@@ -144,7 +144,11 @@ export function mergeShifts(local: ParentShift[], incoming: ParentShift[]): Pare
   }
   for (const s of incoming) {
     if (s && s.memberId && s.date) {
-      map.set(`${s.memberId}_${s.date}`, s);
+      const key = `${s.memberId}_${s.date}`;
+      const existing = map.get(key);
+      if (!existing || (s.updatedAt || 0) >= (existing.updatedAt || 0)) {
+        map.set(key, s);
+      }
     }
   }
   return Array.from(map.values());
@@ -427,10 +431,8 @@ export async function pushFamilyData(
       const delSet = new Set(deletedEventIds);
       finalEvents = finalEvents.filter(e => !delSet.has(e.id));
     }
-    if (deletedShiftIds && deletedShiftIds.length > 0) {
-      const delSet = new Set(deletedShiftIds);
-      finalShifts = finalShifts.filter(s => !delSet.has(s.id));
-    }
+    // Note: shifts passed from state are already the authoritative active shifts,
+    // so we don't accidentally filter out newly created shifts.
 
     const payload = sanitizeForFirestore({
       familyId: cleanFamilyId,

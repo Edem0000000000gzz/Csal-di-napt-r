@@ -25,7 +25,6 @@ import {
   generateNewAccessKey,
   fetchFamilyData,
   pushFamilyData,
-  subscribeToFamilyData,
   DEFAULT_FAMILY_ID,
   mergeEvents,
   mergeShifts,
@@ -148,13 +147,57 @@ export default function App() {
 
   const [joinNotification, setJoinNotification] = useState<string | null>(null);
   const [lastServerTimestamp, setLastServerTimestamp] = useState<number>(0);
-  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'offline' | 'error'>('syncing');
-  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const lastServerTimestampRef = useRef<number>(0);
+  const isSyncingRef = useRef<boolean>(false);
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'offline' | 'error'>('synced');
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(new Date());
 
   // Custom Family Member Names state (in-place editable)
   const [memberNames, setMemberNames] = useState<Record<string, string>>(() => {
     return loadMemberNamesFromStorage();
   });
+
+  // Deleted items tracking for reliable multi-device deletions
+  const deletedEventIdsRef = useRef<Set<string>>(new Set());
+  const deletedShiftIdsRef = useRef<Set<string>>(new Set());
+
+  // Központi felhő-mentés és szinkronizáció – CSAK módosításkor fut le, nem pörög feleslegesen
+  const triggerCloudSync = async (
+    currentEvents: CalendarEvent[],
+    currentShifts: ParentShift[],
+    currentNames: Record<string, string>,
+    delEvts?: string[],
+    delShfts?: string[]
+  ) => {
+    if (!familyId || !isOnline || isSyncingRef.current) return;
+    isSyncingRef.current = true;
+    setSyncStatus('syncing');
+
+    try {
+      const res = await pushFamilyData(
+        familyId,
+        currentEvents,
+        currentShifts,
+        lastServerTimestampRef.current,
+        currentNames,
+        undefined,
+        delEvts,
+        delShfts
+      );
+      if (res.success && res.updatedAt) {
+        lastServerTimestampRef.current = res.updatedAt;
+        setLastServerTimestamp(res.updatedAt);
+        setLastSyncTime(new Date());
+      }
+    } catch (err) {
+      console.warn('[Sync] Mentési figyelmeztetés:', err);
+    } finally {
+      isSyncingRef.current = false;
+      setTimeout(() => {
+        setSyncStatus('synced');
+      }, 350);
+    }
+  };
 
   const handleUpdateMemberName = (memberId: string, newName: string) => {
     const updated = {
@@ -163,23 +206,15 @@ export default function App() {
     };
     setMemberNames(updated);
     saveMemberNamesToStorage(updated);
-
-    if (familyId && isOnline) {
-      pushFamilyData(familyId, events, shifts, lastServerTimestamp, updated).then((res) => {
-        if (res.success && res.updatedAt) {
-          setLastServerTimestamp(res.updatedAt);
-        }
-      });
-    }
+    triggerCloudSync(events, shifts, updated);
   };
 
-  // Initial Sync & Smart Merge on Mount
+  // Kezdeti szinkronizáció és helyi adatok betöltése
   useEffect(() => {
     let isMounted = true;
     const activeId = familyId || DEFAULT_FAMILY_ID;
 
     const doInitialSync = async () => {
-      setSyncStatus('syncing');
       try {
         const localEvts = loadEventsFromStorage();
         const localShfts = loadShiftsFromStorage();
@@ -208,40 +243,33 @@ export default function App() {
             await pushFamilyData(activeId, localEvts, localShfts, undefined, localNames);
           }
 
-          // Case 1: Server has no data yet, but this device already has local data
           if (serverEvents.length === 0 && serverShifts.length === 0 && (localEvts.length > 0 || localShfts.length > 0)) {
             const pushRes = await pushFamilyData(activeId, localEvts, localShfts, undefined, res.memberNames || localNames);
-            if (pushRes.success) {
-              setLastServerTimestamp(pushRes.updatedAt || Date.now());
-              setSyncStatus('synced');
-              setLastSyncTime(new Date());
+            if (pushRes.success && pushRes.updatedAt) {
+              lastServerTimestampRef.current = pushRes.updatedAt;
+              setLastServerTimestamp(pushRes.updatedAt);
             }
-          }
-          // Case 2: Both server and local have data -> smart merge to ensure neither device's data is lost
-          else if (serverEvents.length > 0 || serverShifts.length > 0) {
+          } else if (serverEvents.length > 0 || serverShifts.length > 0) {
             const mergedE = mergeEvents(localEvts, serverEvents);
             const mergedS = mergeShifts(localShfts, serverShifts);
 
             setEvents(mergedE);
             setShifts(mergedS);
+            lastServerTimestampRef.current = serverUpdatedAt || Date.now();
             setLastServerTimestamp(serverUpdatedAt || Date.now());
-            setSyncStatus('synced');
-            setLastSyncTime(new Date());
 
-            // If local had new items not yet on the server, upload the merged set
             if (mergedE.length > serverEvents.length || mergedS.length > serverShifts.length) {
               await pushFamilyData(activeId, mergedE, mergedS, undefined, res.memberNames || localNames);
             }
-          } else {
-            setSyncStatus('synced');
-            setLastSyncTime(new Date());
           }
-        } else {
-          setSyncStatus('error');
         }
       } catch (err) {
-        console.error('[Sync] Initial sync error:', err);
-        setSyncStatus('error');
+        console.error('[Sync] Kezdeti betöltési hiba:', err);
+      } finally {
+        if (isMounted) {
+          setSyncStatus('synced');
+          setLastSyncTime(new Date());
+        }
       }
     };
 
@@ -252,157 +280,71 @@ export default function App() {
     };
   }, [familyId]);
 
-  // Real-time Firestore live listener for instantaneous phone <-> laptop sync
+  // 10 másodperces diszkrét automatikus háttér-frissítés (felhasználói kérés szerint)
   useEffect(() => {
     if (!familyId || !isOnline) return;
 
-    // 1. Real-time Firebase Firestore listener
-    const unsubscribe = subscribeToFamilyData(
-      familyId,
-      (incoming) => {
-        if (incoming.success && incoming.updatedAt && incoming.updatedAt > lastServerTimestamp) {
-          const freshEvents = (incoming.events || []).filter(
-            (e) => !deletedEventIdsRef.current.has(e.id)
-          );
-          const freshShifts = (incoming.shifts || []).filter(
-            (s) => !deletedShiftIdsRef.current.has(s.id)
-          );
-          setEvents(freshEvents);
-          setShifts(freshShifts);
-          saveEventsToStorage(freshEvents);
-          saveShiftsToStorage(freshShifts);
-          if (incoming.memberNames && Object.keys(incoming.memberNames).length > 0) {
-            setMemberNames(incoming.memberNames);
-            saveMemberNamesToStorage(incoming.memberNames);
+    const intervalId = setInterval(async () => {
+      if (isSyncingRef.current) return;
+      try {
+        const res = await fetchFamilyData(familyId);
+        if (res.success && res.updatedAt && res.updatedAt > lastServerTimestampRef.current) {
+          lastServerTimestampRef.current = res.updatedAt;
+          setLastServerTimestamp(res.updatedAt);
+          if (res.events) {
+            setEvents(res.events);
+            saveEventsToStorage(res.events);
           }
-          setLastServerTimestamp(incoming.updatedAt);
-          setSyncStatus('synced');
+          if (res.shifts) {
+            setShifts(res.shifts);
+            saveShiftsToStorage(res.shifts);
+          }
+          if (res.memberNames && Object.keys(res.memberNames).length > 0) {
+            setMemberNames(res.memberNames);
+            saveMemberNamesToStorage(res.memberNames);
+          }
           setLastSyncTime(new Date());
         }
-      },
-      (err) => {
-        console.warn('[Sync] Firestore realtime listener warning:', err);
+      } catch {
+        // Csendes háttér-frissítés
       }
-    );
+    }, 10000); // Pontosan 10 másodpercenként
 
-    // 2. Immediate sync when user switches back to browser tab/phone screen
-    const handleFocusOrVisible = async () => {
-      if (document.visibilityState === 'visible') {
-        try {
-          const res = await fetchFamilyData(familyId);
-          if (res.success && res.updatedAt && res.updatedAt > lastServerTimestamp) {
-            const freshEvents = (res.events || []).filter(
-              (e) => !deletedEventIdsRef.current.has(e.id)
-            );
-            const freshShifts = (res.shifts || []).filter(
-              (s) => !deletedShiftIdsRef.current.has(s.id)
-            );
-            setEvents(freshEvents);
-            setShifts(freshShifts);
-            saveEventsToStorage(freshEvents);
-            saveShiftsToStorage(freshShifts);
-            if (res.memberNames) {
-              setMemberNames(res.memberNames);
-              saveMemberNamesToStorage(res.memberNames);
-            }
-            setLastServerTimestamp(res.updatedAt);
-            setSyncStatus('synced');
-            setLastSyncTime(new Date());
-          }
-        } catch (err) {
-          console.error('[Sync] Visibility sync error:', err);
-        }
-      }
-    };
+    return () => clearInterval(intervalId);
+  }, [familyId, isOnline]);
 
-    window.addEventListener('focus', handleFocusOrVisible);
-    document.addEventListener('visibilitychange', handleFocusOrVisible);
-
-    return () => {
-      unsubscribe();
-      window.removeEventListener('focus', handleFocusOrVisible);
-      document.removeEventListener('visibilitychange', handleFocusOrVisible);
-    };
-  }, [familyId, isOnline, lastServerTimestamp]);
-
-  // Deleted items tracking for reliable multi-device deletions
-  const deletedEventIdsRef = useRef<Set<string>>(new Set());
-  const deletedShiftIdsRef = useRef<Set<string>>(new Set());
-
-  // Debounced push to server when events or shifts change
-  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const isInitialMount = useRef(true);
-
-  useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      return;
-    }
-    if (!familyId || !isOnline) return;
-
-    setSyncStatus('syncing');
-    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-    syncTimeoutRef.current = setTimeout(async () => {
-      const deletedEvts: string[] = Array.from(deletedEventIdsRef.current);
-      const deletedShfts: string[] = Array.from(deletedShiftIdsRef.current);
-
-      const res = await pushFamilyData(
-        familyId,
-        events,
-        shifts,
-        lastServerTimestamp,
-        memberNames,
-        undefined,
-        deletedEvts,
-        deletedShfts
-      );
-      if (res.success) {
-        deletedEventIdsRef.current.clear();
-        deletedShiftIdsRef.current.clear();
-        if (res.updatedAt) setLastServerTimestamp(res.updatedAt);
-        setSyncStatus('synced');
-        setLastSyncTime(new Date());
-        if (res.events) {
-          setEvents(res.events);
-        }
-        if (res.shifts) {
-          setShifts(res.shifts);
-        }
-      } else {
-        setSyncStatus('error');
-      }
-    }, 400);
-
-    return () => {
-      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-    };
-  }, [events, shifts, familyId, isOnline, memberNames]);
-
-  // Manual trigger to refresh from cloud immediately
+  // Kézi frissítés gomb (azonnali szinkronizáció)
   const handleManualSync = async () => {
-    if (!familyId) return;
+    if (!familyId || !isOnline || isSyncingRef.current) return;
     setSyncStatus('syncing');
+    isSyncingRef.current = true;
     try {
       const res = await fetchFamilyData(familyId);
       if (res.success) {
         if (res.events?.length || res.shifts?.length) {
           setEvents(res.events || []);
           setShifts(res.shifts || []);
+          saveEventsToStorage(res.events || []);
+          saveShiftsToStorage(res.shifts || []);
         } else if (events.length > 0 || shifts.length > 0) {
           await pushFamilyData(familyId, events, shifts, undefined, memberNames);
         }
-        if (res.memberNames) {
+        if (res.memberNames && Object.keys(res.memberNames).length > 0) {
           setMemberNames(res.memberNames);
           saveMemberNamesToStorage(res.memberNames);
         }
-        setLastServerTimestamp(res.updatedAt || Date.now());
-        setSyncStatus('synced');
+        const freshTimestamp = res.updatedAt || Date.now();
+        lastServerTimestampRef.current = freshTimestamp;
+        setLastServerTimestamp(freshTimestamp);
         setLastSyncTime(new Date());
-      } else {
-        setSyncStatus('error');
       }
     } catch {
-      setSyncStatus('error');
+      // Kezelve
+    } finally {
+      isSyncingRef.current = false;
+      setTimeout(() => {
+        setSyncStatus('synced');
+      }, 400);
     }
   };
 
@@ -477,6 +419,7 @@ export default function App() {
     setShifts(imported.shifts);
     saveEventsToStorage(imported.events);
     saveShiftsToStorage(imported.shifts);
+    triggerCloudSync(imported.events, imported.shifts, memberNames);
   };
 
   // Auto-save events
@@ -526,45 +469,53 @@ export default function App() {
 
   const handleSaveEvent = (savedEvent: CalendarEvent) => {
     deletedEventIdsRef.current.delete(savedEvent.id);
+    let updatedList: CalendarEvent[] = [];
     setEvents((prev) => {
       const exists = prev.some((e) => e.id === savedEvent.id);
-      const updated = exists
+      updatedList = exists
         ? prev.map((e) => (e.id === savedEvent.id ? savedEvent : e))
         : [savedEvent, ...prev];
-      saveEventsToStorage(updated);
-      return updated;
+      saveEventsToStorage(updatedList);
+      return updatedList;
     });
+    triggerCloudSync(updatedList, shifts, memberNames);
   };
 
   const handleSaveBatchEvents = (savedEvents: CalendarEvent[]) => {
     if (!savedEvents || savedEvents.length === 0) return;
     savedEvents.forEach((e) => deletedEventIdsRef.current.delete(e.id));
+    let updatedList: CalendarEvent[] = [];
     setEvents((prev) => {
       const ids = new Set(savedEvents.map((e) => e.id));
       const rest = prev.filter((e) => !ids.has(e.id));
-      const updated = [...savedEvents, ...rest];
-      saveEventsToStorage(updated);
-      return updated;
+      updatedList = [...savedEvents, ...rest];
+      saveEventsToStorage(updatedList);
+      return updatedList;
     });
+    triggerCloudSync(updatedList, shifts, memberNames);
   };
 
   const handleDeleteEvent = (eventId: string) => {
     deletedEventIdsRef.current.add(eventId);
+    let updatedList: CalendarEvent[] = [];
     setEvents((prev) => {
-      const updated = prev.filter((e) => e.id !== eventId);
-      saveEventsToStorage(updated);
-      return updated;
+      updatedList = prev.filter((e) => e.id !== eventId);
+      saveEventsToStorage(updatedList);
+      return updatedList;
     });
+    triggerCloudSync(updatedList, shifts, memberNames, [eventId], undefined);
   };
 
   const handleToggleEventCompleted = (eventId: string) => {
+    let updatedList: CalendarEvent[] = [];
     setEvents((prev) => {
-      const updated = prev.map((e) =>
+      updatedList = prev.map((e) =>
         e.id === eventId ? { ...e, isCompleted: !e.isCompleted } : e
       );
-      saveEventsToStorage(updated);
-      return updated;
+      saveEventsToStorage(updatedList);
+      return updatedList;
     });
+    triggerCloudSync(updatedList, shifts, memberNames);
   };
 
   // Handlers for Shifts
@@ -581,40 +532,65 @@ export default function App() {
 
   const handleSaveShift = (newShift: ParentShift) => {
     deletedShiftIdsRef.current.delete(newShift.id);
+    let updatedList: ParentShift[] = [];
     setShifts((prev) => {
       const filtered = prev.filter((s) => s.id !== newShift.id);
-      const updated = [...filtered, newShift];
-      saveShiftsToStorage(updated);
-      return updated;
+      updatedList = [...filtered, newShift];
+      saveShiftsToStorage(updatedList);
+      return updatedList;
     });
+    triggerCloudSync(events, updatedList, memberNames);
   };
 
   const handleDeleteShift = (shiftId: string) => {
     deletedShiftIdsRef.current.add(shiftId);
+    let updatedList: ParentShift[] = [];
     setShifts((prev) => {
-      const updated = prev.filter((s) => s.id !== shiftId);
-      saveShiftsToStorage(updated);
-      return updated;
+      updatedList = prev.filter((s) => s.id !== shiftId);
+      saveShiftsToStorage(updatedList);
+      return updatedList;
     });
+    triggerCloudSync(events, updatedList, memberNames, undefined, [shiftId]);
   };
 
   const handleBatchApplyShifts = (newShifts: ParentShift[], removeShiftIds?: string[]) => {
-    // 1. Unmark newly applied shifts from deleted cache so Firestore won't purge them
-    newShifts.forEach((s) => deletedShiftIdsRef.current.delete(s.id));
+    // 1. Unmark newly applied shifts from deleted cache
+    newShifts.forEach((s) => {
+      deletedShiftIdsRef.current.delete(s.id);
+      deletedShiftIdsRef.current.delete(`${s.memberId}_${s.date}`);
+    });
 
     // 2. Track real removals
+    const newKeys = new Set(newShifts.map((s) => `${s.memberId}_${s.date}`));
+    const newIds = new Set(newShifts.map((s) => s.id));
     if (removeShiftIds && removeShiftIds.length > 0) {
-      removeShiftIds.forEach((id) => deletedShiftIdsRef.current.add(id));
+      removeShiftIds.forEach((id) => {
+        if (!newIds.has(id)) {
+          deletedShiftIdsRef.current.add(id);
+        }
+      });
     }
 
+    let updatedList: ParentShift[] = [];
     setShifts((prev) => {
-      const idsToReplace = new Set(newShifts.map((s) => s.id));
       const idsToRemove = new Set(removeShiftIds || []);
-      const remaining = prev.filter((s) => !idsToReplace.has(s.id) && !idsToRemove.has(s.id));
-      const updated = [...remaining, ...newShifts];
-      saveShiftsToStorage(updated);
-      return updated;
+      // Replace existing shifts for the same person and date, or with the same id
+      const remaining = prev.filter(
+        (s) => !newKeys.has(`${s.memberId}_${s.date}`) && !newIds.has(s.id) && !idsToRemove.has(s.id)
+      );
+      updatedList = [...remaining, ...newShifts];
+      saveShiftsToStorage(updatedList);
+      return updatedList;
     });
+
+    // Immediate background push to cloud Firestore & server to guarantee persistence
+    triggerCloudSync(
+      events,
+      updatedList,
+      memberNames,
+      Array.from(deletedEventIdsRef.current),
+      Array.from(deletedShiftIdsRef.current)
+    );
   };
 
   // Navigation helpers
@@ -631,12 +607,13 @@ export default function App() {
     reader.onload = (evt) => {
       try {
         const parsed = JSON.parse(evt.target?.result as string);
-        if (Array.isArray(parsed.events)) {
-          setEvents(parsed.events);
-        }
-        if (Array.isArray(parsed.shifts)) {
-          setShifts(parsed.shifts);
-        }
+        const newEvents = Array.isArray(parsed.events) ? parsed.events : events;
+        const newShifts = Array.isArray(parsed.shifts) ? parsed.shifts : shifts;
+        setEvents(newEvents);
+        setShifts(newShifts);
+        saveEventsToStorage(newEvents);
+        saveShiftsToStorage(newShifts);
+        triggerCloudSync(newEvents, newShifts, memberNames);
       } catch (err) {
         console.error('Import failed', err);
       }
@@ -692,28 +669,20 @@ export default function App() {
           {/* Action buttons */}
           <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => handleOpenShiftModal(undefined, undefined, 'week')}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 border border-amber-500/50 font-bold text-xs sm:text-sm transition cursor-pointer shadow-xs active:scale-95"
-              title="Szülői munkaidő gyors heti kitöltése (Apa: 07-15, Anya: 06-18 mindkettőjüknek)"
-            >
-              <Wand2 className="w-4 h-4 text-amber-400 shrink-0" />
-              <span className="whitespace-nowrap">⚡ Heti gyorskitöltés</span>
-            </button>
-            <button
-              onClick={() => handleOpenShiftModal(undefined, undefined, 'day')}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-indigo-300 hover:text-indigo-200 border border-indigo-900/60 font-semibold text-xs sm:text-sm transition cursor-pointer shadow-xs"
-              title="Egy adott napi szülői munkaidő beállítása"
-            >
-              <Briefcase className="w-4 h-4 text-indigo-400 shrink-0" />
-              <span className="whitespace-nowrap">Napi munkaidő</span>
-            </button>
-            <button
               onClick={() => handleOpenNewEventModal()}
               className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs sm:text-sm shadow-md shadow-indigo-600/30 transition cursor-pointer"
               title="Új családi esemény vagy program hozzáadása"
             >
               <Plus className="w-4 h-4 shrink-0" />
               <span className="whitespace-nowrap">+ Új esemény</span>
+            </button>
+            <button
+              onClick={() => handleOpenShiftModal(undefined, undefined, 'week')}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 border border-amber-500/50 font-bold text-xs sm:text-sm transition cursor-pointer shadow-xs active:scale-95"
+              title="Szülői munkaidő gyors heti kitöltése (Apa: 07-15, Anya: 06-18)"
+            >
+              <Wand2 className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="whitespace-nowrap">⚡ Heti gyorskitöltés</span>
             </button>
           </div>
 

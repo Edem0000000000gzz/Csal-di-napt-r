@@ -293,9 +293,8 @@ async function startServer() {
     }
     for (const s of sanitizedIncomingShifts) {
       const shiftKey = `${s.memberId}_${s.date}`;
-      if (!deletedShiftSet.has(s.id) && !deletedShiftSet.has(shiftKey)) {
-        shiftMap.set(shiftKey, s);
-      }
+      // Incoming shifts explicitly submitted by client must always be accepted
+      shiftMap.set(shiftKey, s);
     }
     const finalShifts = Array.from(shiftMap.values());
 

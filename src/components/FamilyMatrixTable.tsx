@@ -67,14 +67,6 @@ export const FamilyMatrixTable: React.FC<FamilyMatrixTableProps> = ({
 
         <div className="flex items-center gap-1.5 ml-auto">
           <button
-            onClick={() => onOpenShiftModal(weekDays[0].iso, undefined, 'week')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 text-xs font-bold transition cursor-pointer shadow-xs active:scale-95"
-            title="A táblázatban látható hét gyorskitöltése szülői munkaidővel"
-          >
-            <Wand2 className="w-3.5 h-3.5 text-amber-400" />
-            <span>⚡ Heti gyorskitöltés</span>
-          </button>
-          <button
             onClick={onJumpToToday}
             className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer shadow-xs"
           >
